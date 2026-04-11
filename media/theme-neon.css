@@ -1,0 +1,24 @@
+:root {
+  --bg-0: #110516;
+  --bg-1: rgba(22, 9, 36, 0.96);
+  --bg-2: rgba(13, 6, 25, 0.95);
+  --bg-accent-soft: rgba(255, 0, 140, 0.24);
+  --bg-accent-low: rgba(0, 208, 255, 0.18);
+  --fg-0: #f7ecff;
+  --fg-1: #d8b8ff;
+  --fg-2: #a97eca;
+  --border-0: rgba(248, 107, 255, 0.18);
+  --border-1: rgba(79, 224, 255, 0.28);
+  --accent-0: #ff4fd8;
+  --accent-1: #56d7ff;
+  --focus-ring: rgba(86, 215, 255, 0.24);
+  --input-bg: rgba(11, 9, 19, 0.85);
+  --button-fg: #130717;
+  --button-ghost-bg: rgba(255, 255, 255, 0.04);
+  --card-bg: rgba(16, 12, 28, 0.86);
+  --card-bg-active: rgba(30, 15, 43, 0.94);
+  --panel-bg-0: rgba(19, 10, 30, 0.94);
+  --panel-bg-1: rgba(10, 7, 18, 0.98);
+  --pill-bg: rgba(86, 215, 255, 0.09);
+  --banner-bg: rgba(255, 79, 216, 0.08);
+}

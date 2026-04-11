@@ -1,0 +1,52 @@
+{
+  "name": "relay",
+  "displayName": "Relay",
+  "description": "A cache-heavy, debugging-forward re-implementation of the ADO build UI.",
+  "version": "0.0.1",
+  "publisher": "semick",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:relay.sidebar"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "relay",
+          "title": "Relay",
+          "icon": "media/activity.svg"
+        }
+      ]
+    },
+    "views": {
+      "relay": [
+        {
+          "id": "relay.sidebar",
+          "name": "Relay"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "relay.refresh",
+        "title": "Relay: Refresh"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "watch": "tsc -w -p ."
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.17",
+    "@types/vscode": "^1.100.0",
+    "typescript": "^5.8.3"
+  }
+}
