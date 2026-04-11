@@ -5,7 +5,11 @@
         "name": "Run Relay Extension",
         "type": "extensionHost",
         "request": "launch",
-        "args": ["--extensionDevelopmentPath=${workspaceFolder}"]
+        "args": ["--extensionDevelopmentPath=${workspaceFolder}"],
+        "env": {
+          "ADO_TOKEN": "${env:ADO_TOKEN}",
+          "RELAY_OTEL_FOLDER": "${env:RELAY_OTEL_FOLDER}"
+        }
       }
     ]
   }

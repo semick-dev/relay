@@ -47,11 +47,27 @@ input {
     var(--bg-0);
 }
 
+body.relay-sidebar #app,
+#app.sidebar-shell {
+  display: block;
+  height: 100vh;
+}
+
+body.relay-panel #app,
+.panel-shell {
+  height: 100vh;
+}
+
 .sidebar {
   position: relative;
   padding: var(--space-4);
   border-right: 1px solid var(--border-0);
   background: linear-gradient(180deg, var(--bg-1), var(--bg-2));
+}
+
+.sidebar--standalone {
+  height: 100vh;
+  border-right: 0;
 }
 
 .sidebar__header h1,
@@ -144,6 +160,10 @@ input:focus {
   overflow: auto;
 }
 
+.project-list {
+  max-height: calc(100vh - 330px);
+}
+
 .project-item,
 .build-item,
 .detail-card {
@@ -204,6 +224,10 @@ input:focus {
   color: var(--fg-2);
   border: 1px dashed var(--border-1);
   border-radius: var(--radius-md);
+}
+
+.empty-state--compact {
+  min-height: 120px;
 }
 
 .build-item {

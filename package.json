@@ -28,6 +28,7 @@
     "views": {
       "relay": [
         {
+          "type": "webview",
           "id": "relay.sidebar",
           "name": "Relay"
         }

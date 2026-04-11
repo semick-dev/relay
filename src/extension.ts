@@ -6,6 +6,7 @@ import { RelayApiServer } from "./server/apiServer";
 import { RelayCacheStore } from "./server/cacheStore";
 import { RelayStorage } from "./server/storage";
 import { RelayTelemetrySink } from "./server/telemetry";
+import { RelayMainPanel } from "./webview/mainPanel";
 import { RelaySidebarProvider } from "./webview/provider";
 
 let relayServer: RelayApiServer | undefined;
@@ -24,7 +25,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   relayServer = new RelayApiServer(adoClient, cacheStore, storage, telemetry);
 
   const port = await relayServer.start();
-  const provider = new RelaySidebarProvider(context, `http://127.0.0.1:${port}`);
+  const apiBase = `http://127.0.0.1:${port}`;
+  const mainPanel = new RelayMainPanel(context, apiBase);
+  const provider = new RelaySidebarProvider(
+    context,
+    apiBase,
+    (project) => mainPanel.open(project),
+    (themeId) => mainPanel.postTheme(themeId)
+  );
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider("relay.sidebar", provider),

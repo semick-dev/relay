@@ -15,6 +15,10 @@ export interface RelayBootstrap {
   themeUrls: Record<ThemeId, string>;
 }
 
+export interface RelayPanelBootstrap extends RelayBootstrap {
+  initialProject?: string;
+}
+
 export interface SessionResponse {
   ok: boolean;
   authConfigured: boolean;

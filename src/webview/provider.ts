@@ -15,7 +15,9 @@ export class RelaySidebarProvider implements vscode.WebviewViewProvider, vscode.
 
   constructor(
     private readonly context: vscode.ExtensionContext,
-    private readonly apiBase: string
+    private readonly apiBase: string,
+    private readonly onOpenProject: (project: string) => void,
+    private readonly onThemeChange: (theme: ThemeId) => void
   ) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView): void | Thenable<void> {
@@ -43,17 +45,25 @@ export class RelaySidebarProvider implements vscode.WebviewViewProvider, vscode.
       return;
     }
 
-    const typed = message as { type?: string; state?: Partial<RelayPersistedState> };
-    if (typed.type !== "persistState" || !typed.state) {
+    const typed = message as { type?: string; state?: Partial<RelayPersistedState>; project?: string; themeId?: ThemeId };
+    if (typed.type === "persistState" && typed.state) {
+      const current = this.getState();
+      const next: RelayPersistedState = {
+        activeTheme: isThemeId(typed.state.activeTheme) ? typed.state.activeTheme : current.activeTheme,
+        orgUrl: typeof typed.state.orgUrl === "string" ? typed.state.orgUrl : current.orgUrl
+      };
+      await this.context.globalState.update(STATE_KEY, next);
       return;
     }
 
-    const current = this.getState();
-    const next: RelayPersistedState = {
-      activeTheme: isThemeId(typed.state.activeTheme) ? typed.state.activeTheme : current.activeTheme,
-      orgUrl: typeof typed.state.orgUrl === "string" ? typed.state.orgUrl : current.orgUrl
-    };
-    await this.context.globalState.update(STATE_KEY, next);
+    if (typed.type === "openProject" && typeof typed.project === "string" && typed.project) {
+      this.onOpenProject(typed.project);
+      return;
+    }
+
+    if (typed.type === "themeChanged" && isThemeId(typed.themeId)) {
+      this.onThemeChange(typed.themeId);
+    }
   }
 
   private renderHtml(webview: vscode.Webview): string {
@@ -91,8 +101,8 @@ export class RelaySidebarProvider implements vscode.WebviewViewProvider, vscode.
   <link rel="stylesheet" id="theme-css" href="${initialTheme}" />
 </head>
 <body>
-  <div id="app">
-    <aside class="sidebar">
+  <div id="app" class="sidebar-shell">
+    <aside class="sidebar sidebar--standalone">
       <div class="sidebar__header">
         <p class="eyebrow">Relay</p>
         <h1>ADO Build UI</h1>
@@ -120,33 +130,8 @@ export class RelaySidebarProvider implements vscode.WebviewViewProvider, vscode.
       </div>
     </aside>
 
-    <main class="content content--main" id="content">
-      <section class="panel panel--main">
-        <div class="panel__header">
-          <div>
-            <p class="eyebrow">Project</p>
-            <h2 id="main-title">Awaiting connection</h2>
-          </div>
-          <div id="main-status" class="status-copy">Enter an org URL to load projects.</div>
-        </div>
-        <div id="message-banner"></div>
-        <div id="build-list" class="build-list empty-state">
-          No project selected.
-        </div>
-      </section>
-      <section class="panel panel--detail is-hidden" id="detail-panel">
-        <div class="panel__header">
-          <div>
-            <p class="eyebrow">Build</p>
-            <h2 id="detail-title">No build selected</h2>
-          </div>
-          <button id="close-detail" class="button button--ghost">Close</button>
-        </div>
-        <div id="detail-body" class="detail-grid empty-state">
-          Choose a build to inspect.
-        </div>
-      </section>
-    </main>
+      <div id="message-banner"></div>
+    </aside>
   </div>
 
   <script nonce="${nonce}">
