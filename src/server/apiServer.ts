@@ -350,6 +350,7 @@ export class RelayApiServer {
   private async loadTimeline(orgUrl: string, project: string, buildId: number, forceRefresh: boolean): Promise<RelayTimelineResponse> {
     const build = await this.loadBuild(orgUrl, project, buildId, forceRefresh);
     const completed = isBuildCompleted(build.build);
+    const localTimestamp = await this.storage.readBuildTimestamp(buildId);
     const cachedTimeline = completed && !forceRefresh
       ? await this.storage.readBuildJson<RelayTimelineNode[]>(buildId, "timeline.json")
       : null;
@@ -359,7 +360,7 @@ export class RelayApiServer {
         ok: true,
         buildId,
         cached: true,
-        lastRefresh: build.build.lastRefresh,
+        lastRefresh: localTimestamp ?? build.build.lastRefresh,
         timeline: cachedTimeline
       };
     }
@@ -382,13 +383,14 @@ export class RelayApiServer {
     const build = await this.loadBuild(orgUrl, project, buildId, forceRefresh);
     const completed = isBuildCompleted(build.build);
     const relativePath = `logs/${logId}.txt`;
+    const localTimestamp = await this.storage.readBuildTimestamp(buildId);
     const cachedLog = completed && !forceRefresh
       ? await this.storage.readBuildText(buildId, relativePath)
       : null;
 
     if (cachedLog !== null) {
       const sizeBytes = Buffer.byteLength(cachedLog, "utf8");
-      return this.buildTaskLogResponse(buildId, logId, true, build.build.lastRefresh, cachedLog, relativePath, sizeBytes);
+      return this.buildTaskLogResponse(buildId, logId, true, localTimestamp ?? build.build.lastRefresh, cachedLog, relativePath, sizeBytes);
     }
 
     const content = await this.adoClient.getLog(orgUrl, project, buildId, logId);
