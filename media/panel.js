@@ -77,7 +77,7 @@
     applyTheme(state.activeTheme);
     await emit("relay.ui.panel.boot", { activeTheme: state.activeTheme }, "span");
     if (!state.orgUrl) {
-      renderBanner("No organization URL is set. Use the Relay sidebar first.");
+      renderBanner("No organization URL is set. Use the Azure DevOps Relay sidebar first.");
       return;
     }
     const session = await apiGet("/api/session");
@@ -108,7 +108,7 @@
     state.selectedDefinition = null;
     state.currentBuild = null;
     state.definitionBuilds = [];
-    setTitle(`Relay: ${project}`);
+    setTitle(`Azure DevOps Relay: ${project}`);
 
     if (view === "artifacts") {
       commitNavState({ mode: "artifacts", project }, true);

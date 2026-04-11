@@ -1,6 +1,6 @@
 # Publishing
 
-Relay is packaged and published as the VS Code extension `semick-dev.relay`.
+Azure DevOps Relay is packaged and published as the VS Code extension `semick-dev.ado-relay`.
 
 Prerequisites:
 
@@ -49,12 +49,10 @@ Create a Marketplace package:
 npm run marketplace:package
 ```
 
-That command runs `npx @vscode/vsce package` through a wrapper that temporarily removes any `demo.mp4` references from `README.md` while packaging, then restores the file afterward. This keeps the working-tree README intact while preventing package-time media issues.
-
 Install the generated VSIX locally for a smoke test:
 
 ```bash
-code --install-extension relay-0.0.1.vsix
+code --install-extension ado-relay-0.0.1.vsix
 ```
 
 Publish to the Visual Studio Marketplace:
@@ -63,16 +61,14 @@ Publish to the Visual Studio Marketplace:
 npm run marketplace:publish
 ```
 
-That command uses the same README sanitizing wrapper and then runs `npx @vscode/vsce publish`.
-
 Expected publish identity:
 
 - Marketplace account: `sbeddall@live.com`
 - Marketplace user ID: `7925c4ba-3a6c-4484-bcbf-6656030c5284`
 - VS Code publisher ID: `semick-dev`
-- Published extension ID: `semick-dev.relay`
+- Published extension ID: `semick-dev.ado-relay`
 
-If you prefer the direct CLI flow instead of the wrapper scripts, manually remove any `demo.mp4` references from `README.md` first, then run:
+If you prefer the direct CLI flow instead of the npm scripts, run:
 
 ```bash
 npx @vscode/vsce package

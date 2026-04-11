@@ -6,7 +6,7 @@ https://github.com/user-attachments/assets/6ae4ba7d-af43-40e9-b1f7-e1ae80c4af1a
 
 ## Current shape
 
-This repo now contains the first-pass VS Code extension scaffold for Relay:
+This repo now contains the first-pass VS Code extension scaffold for Azure DevOps Relay:
 
 - Activity Bar container with a single webview-based UI
 - In-process localhost API server for all webview data access

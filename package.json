@@ -1,6 +1,6 @@
 {
-  "name": "relay",
-  "displayName": "Relay",
+  "name": "ado-relay",
+  "displayName": "Azure DevOps Relay",
   "description": "A cache-heavy, debugging-forward re-implementation of the ADO build UI.",
   "version": "0.0.1",
   "publisher": "semick-dev",
@@ -45,7 +45,7 @@
       "activitybar": [
         {
           "id": "relay",
-          "title": "Relay",
+          "title": "Azure DevOps Relay",
           "icon": "media/activity.svg"
         }
       ]
@@ -55,14 +55,14 @@
         {
           "type": "webview",
           "id": "relay.sidebar",
-          "name": "Relay"
+          "name": "Azure DevOps Relay"
         }
       ]
     },
     "commands": [
       {
         "command": "relay.refresh",
-        "title": "Relay: Refresh"
+        "title": "Azure DevOps Relay: Refresh"
       }
     ]
   },

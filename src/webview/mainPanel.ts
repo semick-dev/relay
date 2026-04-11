@@ -25,7 +25,7 @@ export class RelayMainPanel {
 
     this.panel = vscode.window.createWebviewPanel(
       "relay.main",
-      project ? `Relay: ${project}` : "Relay",
+      project ? `Azure DevOps Relay: ${project}` : "Azure DevOps Relay",
       vscode.ViewColumn.One,
       {
         enableScripts: true,
@@ -131,7 +131,7 @@ export class RelayMainPanel {
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="${csp}" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Relay</title>
+  <title>Azure DevOps Relay</title>
   <link rel="stylesheet" href="${baseCss}" />
   <link rel="stylesheet" id="theme-css" href="${initialTheme}" />
 </head>
@@ -146,7 +146,7 @@ export class RelayMainPanel {
         </div>
         <div class="panel__header-actions">
           <button id="main-cache-pill" class="pill pill--button">Idle</button>
-          <div id="main-status" class="status-copy">Choose a project from the Relay sidebar.</div>
+          <div id="main-status" class="status-copy">Choose a project from the Azure DevOps Relay sidebar.</div>
         </div>
       </div>
       <div id="toolbar" class="toolbar is-hidden"></div>

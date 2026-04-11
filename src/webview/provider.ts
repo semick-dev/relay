@@ -108,7 +108,7 @@ export class RelaySidebarProvider implements vscode.WebviewViewProvider, vscode.
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="${csp}" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Relay</title>
+  <title>Azure DevOps Relay</title>
   <link rel="stylesheet" href="${baseCss}" />
   <link rel="stylesheet" id="theme-css" href="${initialTheme}" />
 </head>
@@ -117,7 +117,7 @@ export class RelaySidebarProvider implements vscode.WebviewViewProvider, vscode.
     <aside class="sidebar sidebar--standalone">
       <div class="sidebar__header">
         <p class="eyebrow">Azure DevOps</p>
-        <h1>Relay</h1>
+        <h1>Azure DevOps Relay</h1>
       </div>
 
       <div class="sidebar__group">
