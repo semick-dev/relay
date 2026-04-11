@@ -789,41 +789,47 @@
       }
       cursor.definitions.push(definition);
     }
-    return renderFolderNode(root, 0);
+    return renderFolderNode(root, []);
   }
 
-  function renderFolderNode(node, depth) {
-    const folderHtml = Object.entries(node.folders)
+  function renderFolderNode(node, lineage) {
+    const folderEntries = Object.entries(node.folders)
       .sort(([left], [right]) => left.localeCompare(right))
-      .map(([name, folder]) => `
-        <details class="folder-node" ${depth < 1 ? "open" : ""}>
-          <summary>${escapeHtml(name)}</summary>
-          <div class="folder-node__body">
-            ${renderFolderNode(folder, depth + 1)}
+      .map(([name, folder], index, all) => {
+        const connector = `${lineage.join("")}${index === all.length - 1 && node.definitions.length === 0 ? "└─" : "├─"}`;
+        const nextLineage = [...lineage, index === all.length - 1 && node.definitions.length === 0 ? "  " : "│ "];
+        return `
+          <div class="definition-tree-node">
+            <div class="definition-row definition-row--folder">
+              <span class="definition-row__ascii">${escapeHtml(connector)}</span>
+              <span class="definition-row__label">${escapeHtml(name)}</span>
+            </div>
+            <div class="definition-tree-node__children">
+              ${renderFolderNode(folder, nextLineage)}
+            </div>
           </div>
-        </details>
-      `)
+        `;
+      })
       .join("");
 
     const definitionHtml = node.definitions
       .sort((left, right) => left.name.localeCompare(right.name))
-      .map((definition) => definitionCard(definition))
+      .map((definition, index, all) => definitionCard(
+        definition,
+        `${lineage.join("")}${index === all.length - 1 ? "└─" : "├─"}`
+      ))
       .join("");
 
-    return `${folderHtml}${definitionHtml}`;
+    return `${folderEntries}${definitionHtml}`;
   }
 
-  function definitionCard(definition) {
+  function definitionCard(definition, connector) {
     const selected = state.selectedDefinition?.id === definition.id ? " is-active" : "";
     return `
-      <button class="definition-item${selected}" data-definition-id="${definition.id}">
-        <div class="definition-item__name">${escapeHtml(definition.name)}</div>
-        <div class="build-meta">
-          <span>#${escapeHtml(String(definition.id))}</span>
-          <span>rev ${escapeHtml(String(definition.revision))}</span>
-          <span>${escapeHtml(definition.queueStatus || "enabled")}</span>
-          <span>${escapeHtml(formatDate(definition.latestBuild?.finishTime))}</span>
-        </div>
+      <button class="definition-row definition-row--item${selected}" data-definition-id="${definition.id}">
+        <span class="definition-row__ascii">${escapeHtml(connector)}</span>
+        <span class="definition-row__label">${escapeHtml(definition.name)}</span>
+        <span class="definition-row__meta">#${escapeHtml(String(definition.id))} · rev ${escapeHtml(String(definition.revision))} · ${escapeHtml(definition.queueStatus || "enabled")}</span>
       </button>
     `;
   }

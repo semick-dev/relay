@@ -166,16 +166,14 @@ input:focus {
 
 .project-item,
 .build-item,
-.detail-card,
-.definition-item {
+.detail-card {
   border: 1px solid var(--border-0);
   border-radius: var(--radius-md);
   background: var(--card-bg);
   box-shadow: var(--shadow-main);
 }
 
-.project-item,
-.definition-item {
+.project-item {
   padding: 12px 14px;
   cursor: pointer;
 }
@@ -412,40 +410,68 @@ input:focus {
 
 .definition-tree {
   display: grid;
-  gap: 10px;
+  gap: 4px;
+  min-width: 0;
 }
 
-.folder-node {
-  border: 1px solid var(--border-0);
-  border-radius: var(--radius-md);
+.definition-tree-node,
+.definition-tree-node__children {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.definition-row {
+  width: 100%;
+  text-align: left;
+  padding: 3px 0;
+  border: 0;
+  background: transparent;
+  color: var(--fg-0);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+.definition-row--item {
+  cursor: pointer;
+}
+
+.definition-row--item:hover {
   background: rgba(255, 255, 255, 0.02);
 }
 
-.folder-node > summary {
-  list-style: none;
-  cursor: pointer;
-  padding: 12px 14px;
-  font-weight: 600;
+.definition-row--item.is-active {
+  color: var(--accent-1);
 }
 
-.folder-node > summary::-webkit-details-marker {
-  display: none;
+.definition-row--folder {
+  color: var(--fg-1);
 }
 
-.folder-node__body {
-  display: grid;
-  gap: 10px;
-  padding: 0 12px 12px;
+.definition-row__ascii {
+  color: var(--fg-2);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  white-space: pre;
 }
 
-.definition-item {
-  width: 100%;
-  text-align: left;
+.definition-row__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
 }
 
-.definition-item__name {
-  font-weight: 600;
-  margin-bottom: 8px;
+.definition-row__meta {
+  color: var(--fg-2);
+  font-size: 0.75rem;
+  white-space: nowrap;
 }
 
 .detail-card {
