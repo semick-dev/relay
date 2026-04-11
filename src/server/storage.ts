@@ -79,6 +79,16 @@ export class RelayStorage {
     }
   }
 
+  async getBuildFileSize(buildId: number, relativePath: string): Promise<number | null> {
+    try {
+      const target = await this.ensureBuildDir(buildId);
+      const stat = await fs.stat(path.join(target, relativePath));
+      return stat.size;
+    } catch {
+      return null;
+    }
+  }
+
   getBuildFilePath(buildId: number, relativePath: string): string {
     return path.join(this.buildDir, String(buildId), relativePath);
   }

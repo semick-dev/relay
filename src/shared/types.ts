@@ -98,6 +98,9 @@ export interface RelayTaskLogInfoResponse {
   cached: boolean;
   lastRefresh?: string;
   lineCount?: number;
+  sizeBytes?: number;
+  downloadPath?: string;
+  isLarge: boolean;
   shouldDelayDownload: boolean;
 }
 

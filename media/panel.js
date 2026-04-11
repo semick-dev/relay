@@ -33,6 +33,7 @@
     content: document.getElementById("content"),
     mainCachePill: document.getElementById("main-cache-pill"),
     detailPanel: document.getElementById("detail-panel"),
+    detailKind: document.getElementById("detail-kind"),
     detailTitle: document.getElementById("detail-title"),
     detailBody: document.getElementById("detail-body"),
     detailCachePill: document.getElementById("detail-cache-pill"),
@@ -468,41 +469,60 @@
     };
     elements.content.classList.add("is-split");
     elements.detailPanel.classList.remove("is-hidden");
+    elements.detailKind.textContent = "Task";
     elements.detailTitle.textContent = taskName;
     elements.detailBody.className = "detail-pane";
     elements.detailBody.innerHTML = `
       <div class="task-pane">
-        <p class="eyebrow">Task</p>
-        <h3>${escapeHtml(taskName)}</h3>
         <div class="banner">Loading task output...</div>
       </div>
     `;
     const info = await apiGet(`/api/builds/${state.currentBuild.id}/logs/${logId}/meta?orgUrl=${encodeURIComponent(state.orgUrl)}&project=${encodeURIComponent(state.selectedProject)}`);
-    if (info.shouldDelayDownload && !forceRefresh) {
+    if (info.isLarge && !forceRefresh) {
       setDetailCachePill(info.cached, info.lastRefresh, "Refresh task output");
       elements.detailBody.innerHTML = `
         <div class="task-pane">
-          <p class="eyebrow">Task</p>
-          <h3>${escapeHtml(taskName)}</h3>
-          <div class="definition-builds-meta muted">${info.cached ? "cached" : "not downloaded"} · ${escapeHtml(String(info.lineCount || logLineCount || 0))} lines</div>
-          <div class="banner">This task log is large, so Relay will only download it when you ask.</div>
-          <button id="task-download-button" class="button button--primary">Download Task Output</button>
-          <div id="task-download-progress" class="progress-wrap is-hidden">
-            <div class="progress-meta">
-              <span>Downloading task output</span>
-              <span id="task-download-label">Starting</span>
+          <div class="definition-builds-meta muted">${info.cached ? "cached" : "not downloaded"} · ${formatTaskLogMeta(info.sizeBytes, info.lineCount || logLineCount)} · ${escapeHtml(formatDate(info.lastRefresh))}</div>
+          <div class="banner">Task output is larger than 1MB.</div>
+          ${info.downloadPath ? `
+            <div class="detail-card">
+              <p class="eyebrow">Local Path</p>
+              <code>${escapeHtml(info.downloadPath)}</code>
             </div>
-            <div class="progress-bar"><div id="task-download-bar" class="progress-bar__fill progress-bar__fill--indeterminate"></div></div>
-          </div>
+            <div class="button-row">
+              <button id="task-show-log-button" class="button button--primary">Show Log</button>
+            </div>
+          ` : `
+            <button id="task-download-button" class="button button--primary">Download Task Output</button>
+            <div id="task-download-progress" class="progress-wrap is-hidden">
+              <div class="progress-meta">
+                <span>Downloading task output</span>
+                <span id="task-download-label">Starting</span>
+              </div>
+              <div class="progress-bar"><div id="task-download-bar" class="progress-bar__fill progress-bar__fill--indeterminate"></div></div>
+            </div>
+          `}
         </div>
       `;
-      document.getElementById("task-download-button").addEventListener("click", async () => {
-        const progress = document.getElementById("task-download-progress");
-        const label = document.getElementById("task-download-label");
-        progress.classList.remove("is-hidden");
-        label.textContent = "Downloading";
-        await openTaskPane(taskName, logId, logLineCount, true);
-      });
+      const downloadButton = document.getElementById("task-download-button");
+      if (downloadButton) {
+        downloadButton.addEventListener("click", async () => {
+          const progress = document.getElementById("task-download-progress");
+          const label = document.getElementById("task-download-label");
+          progress.classList.remove("is-hidden");
+          label.textContent = "Downloading";
+          await openTaskPane(taskName, logId, logLineCount, true);
+        });
+      }
+      const showButton = document.getElementById("task-show-log-button");
+      if (showButton && info.downloadPath) {
+        showButton.addEventListener("click", () => {
+          vscode.postMessage({
+            type: "openLogFile",
+            path: info.downloadPath
+          });
+        });
+      }
       return;
     }
 
@@ -511,16 +531,12 @@
     elements.detailBody.innerHTML = response.inline
       ? `
         <div class="task-pane">
-          <p class="eyebrow">Task</p>
-          <h3>${escapeHtml(taskName)}</h3>
           <div class="definition-builds-meta muted">${response.cached ? "cached" : "fresh"} · ${formatBytes(response.sizeBytes)} · ${escapeHtml(formatDate(response.lastRefresh))}</div>
           <pre class="task-log">${escapeHtml(response.content || "")}</pre>
         </div>
       `
       : `
         <div class="task-pane">
-          <p class="eyebrow">Task</p>
-          <h3>${escapeHtml(taskName)}</h3>
           <div class="definition-builds-meta muted">${response.cached ? "cached" : "fresh"} · ${formatBytes(response.sizeBytes)} · ${escapeHtml(formatDate(response.lastRefresh))}</div>
           <div class="banner">Task output is larger than 1MB.</div>
           <div class="detail-card">
@@ -553,6 +569,7 @@
   function openArtifactsPane() {
     elements.content.classList.add("is-split");
     elements.detailPanel.classList.remove("is-hidden");
+    elements.detailKind.textContent = "Build";
     elements.detailTitle.textContent = "Artifacts";
     setDetailCachePill(state.currentArtifactsMeta?.cached, state.currentArtifactsMeta?.lastRefresh, "Refresh artifacts");
     elements.detailBody.className = "detail-pane";
@@ -579,6 +596,16 @@
       vscode.postMessage({ type: "chooseFolder" });
     });
     renderArtifactList();
+  }
+
+  function formatTaskLogMeta(sizeBytes, lineCount) {
+    if (typeof sizeBytes === "number") {
+      return formatBytes(sizeBytes);
+    }
+    if (typeof lineCount === "number" && lineCount > 0) {
+      return `${lineCount} lines`;
+    }
+    return "size unknown";
   }
 
   function renderArtifactList() {

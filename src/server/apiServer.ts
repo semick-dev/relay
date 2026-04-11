@@ -420,10 +420,18 @@ export class RelayApiServer {
     const completed = isBuildCompleted(build.build);
     const relativePath = `logs/${logId}.txt`;
     const cached = completed ? await this.storage.hasBuildFile(buildId, relativePath) : false;
+    const sizeBytes = cached
+      ? await this.storage.getBuildFileSize(buildId, relativePath)
+      : await this.adoClient.getLogSize(orgUrl, project, buildId, logId);
     const timeline = await this.loadTimeline(orgUrl, project, buildId, false);
     const record = findTimelineNodeByLogId(timeline.timeline, logId);
     const lastRefresh = await this.storage.readBuildTimestamp(buildId) ?? build.build.lastRefresh;
     const lineCount = record?.logLineCount;
+    const isLarge = typeof sizeBytes === "number"
+      ? sizeBytes >= 1024 * 1024
+      : typeof lineCount === "number"
+        ? estimateLargeLog(lineCount)
+        : false;
 
     return {
       ok: true,
@@ -432,7 +440,10 @@ export class RelayApiServer {
       cached,
       lastRefresh,
       lineCount,
-      shouldDelayDownload: !cached && estimateLargeLog(lineCount)
+      sizeBytes: sizeBytes ?? undefined,
+      downloadPath: cached ? this.storage.getBuildFilePath(buildId, relativePath) : undefined,
+      isLarge,
+      shouldDelayDownload: isLarge
     };
   }
 

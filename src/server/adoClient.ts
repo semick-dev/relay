@@ -131,6 +131,33 @@ export class RelayAdoClient {
     return await response.text();
   }
 
+  async getLogSize(orgUrl: string, project: string, buildId: number, logId: number): Promise<number | undefined> {
+    const url = new URL(`${encodeURIComponent(project)}/_apis/build/builds/${buildId}/logs/${logId}`, normalizeOrgUrl(orgUrl));
+    url.searchParams.set("api-version", "7.1");
+    this.ensureAuth();
+
+    const auth = Buffer.from(`:${this.token ?? ""}`, "utf8").toString("base64");
+    const response = await fetch(url, {
+      method: "HEAD",
+      headers: {
+        Authorization: `Basic ${auth}`,
+        Accept: "text/plain"
+      }
+    });
+
+    if (!response.ok) {
+      return undefined;
+    }
+
+    const length = response.headers.get("content-length");
+    if (!length) {
+      return undefined;
+    }
+
+    const parsed = Number(length);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+  }
+
   async getBuildChanges(orgUrl: string, project: string, buildId: number): Promise<string | undefined> {
     const url = new URL(`${encodeURIComponent(project)}/_apis/build/builds/${buildId}/changes`, normalizeOrgUrl(orgUrl));
     url.searchParams.set("api-version", "7.1");

@@ -157,7 +157,7 @@ export class RelayMainPanel {
     <section class="panel panel--detail is-hidden" id="detail-panel">
       <div class="panel__header">
         <div>
-          <p class="eyebrow">Build</p>
+          <p id="detail-kind" class="eyebrow">Build</p>
           <h2 id="detail-title">No build selected</h2>
         </div>
         <div class="panel__header-actions">

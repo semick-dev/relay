@@ -288,6 +288,10 @@ input:focus {
   gap: 8px;
 }
 
+.progress-wrap.is-hidden {
+  display: none;
+}
+
 .progress-meta {
   display: flex;
   justify-content: space-between;
