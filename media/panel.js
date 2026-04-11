@@ -373,11 +373,11 @@
     host.className = "build-list";
     host.innerHTML = filtered.map((build) => `
       <button class="build-item" data-build-id="${build.id}">
+        <span class="build-item__corner ${buildStatusClass(build)}" title="${escapeAttr(build.result || build.status)}"></span>
         <div class="build-item__top">
-          <strong>#${escapeHtml(String(build.id))} · ${escapeHtml(build.buildNumber)}</strong>
-          <span class="pill">${escapeHtml(build.result || build.status)}</span>
+          <strong>#${escapeHtml(String(build.id))} · ${escapeHtml(build.buildNumber)} · ${escapeHtml(build.definitionName)}</strong>
         </div>
-        <div>${escapeHtml(build.definitionName)}</div>
+        <div class="build-item__title">${escapeHtml(truncateCommitMessage(build.commitMessage))}</div>
         <div class="build-meta">
           <span>${escapeHtml(build.sourceBranch || "No branch")}</span>
           <span>${escapeHtml(build.requestedFor || "Unknown requester")}</span>
@@ -416,7 +416,6 @@
     elements.buildList.innerHTML = `
       <div class="build-page__topbar">
         <button id="build-page-back" class="button button--ghost">Back</button>
-        <span class="pill">${escapeHtml(state.currentBuild.cached ? "cache hit" : "fresh fetch")}</span>
       </div>
       <details class="build-summary" open>
         <summary>Build Details</summary>
@@ -774,6 +773,32 @@
       return build.result === "failed" || build.result === "canceled";
     }
     return build.result === "succeeded";
+  }
+
+  function buildStatusClass(build) {
+    const result = String(build.result || "").toLowerCase();
+    const status = String(build.status || "").toLowerCase();
+    if (result === "succeeded") {
+      return "build-item__corner--success";
+    }
+    if (result === "failed" || result === "canceled") {
+      return "build-item__corner--failed";
+    }
+    if (status === "inprogress" || status === "notstarted" || status === "postponed") {
+      return "build-item__corner--running";
+    }
+    return "build-item__corner--neutral";
+  }
+
+  function truncateCommitMessage(value) {
+    const text = String(value || "").trim();
+    if (!text) {
+      return "No commit message";
+    }
+    if (text.length <= 72) {
+      return text;
+    }
+    return `${text.slice(0, 69)}...`;
   }
 
   function buildDefinitionTree(definitions) {

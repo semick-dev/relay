@@ -131,6 +131,13 @@ export class RelayAdoClient {
     return await response.text();
   }
 
+  async getBuildChanges(orgUrl: string, project: string, buildId: number): Promise<string | undefined> {
+    const url = new URL(`${encodeURIComponent(project)}/_apis/build/builds/${buildId}/changes`, normalizeOrgUrl(orgUrl));
+    url.searchParams.set("api-version", "7.1");
+    const payload = await this.requestJson<AdoBuildChangesResponse>(url.toString());
+    return payload.value?.[0]?.message;
+  }
+
   async listArtifacts(orgUrl: string, project: string, buildId: number): Promise<RelayArtifactSummary[]> {
     const url = new URL(`${encodeURIComponent(project)}/_apis/build/builds/${buildId}/artifacts`, normalizeOrgUrl(orgUrl));
     url.searchParams.set("api-version", "7.1");
@@ -201,6 +208,7 @@ function mapBuildSummary(build: AdoBuild): RelayBuildSummary {
     buildNumber: build.buildNumber,
     definitionId: build.definition?.id,
     definitionName: build.definition?.name ?? "Unknown",
+    commitMessage: build.sourceVersionMessage,
     status: build.status ?? "unknown",
     result: build.result ?? "unknown",
     queueTime: build.queueTime,
@@ -249,6 +257,7 @@ interface AdoBuild {
   startTime?: string;
   finishTime?: string;
   sourceBranch?: string;
+  sourceVersionMessage?: string;
   reason?: string;
   definition?: {
     id?: number;
@@ -277,6 +286,12 @@ interface AdoArtifactsResponse {
       type?: string;
       downloadUrl?: string;
     };
+  }>;
+}
+
+interface AdoBuildChangesResponse {
+  value?: Array<{
+    message?: string;
   }>;
 }
 

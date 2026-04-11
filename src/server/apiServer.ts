@@ -282,7 +282,13 @@ export class RelayApiServer {
       cacheUrl: adoUrl.toString(),
       ttlSeconds: TTL_SECONDS.builds,
       forceRefresh,
-      fetcher: () => this.adoClient.listBuilds(orgUrl, project, 10, definitionId),
+      fetcher: async () => {
+        const builds = await this.adoClient.listBuilds(orgUrl, project, 10, definitionId);
+        return await Promise.all(builds.map(async (build) => ({
+          ...build,
+          commitMessage: await this.adoClient.getBuildChanges(orgUrl, project, build.id)
+        })));
+      },
       mapper: (builds, cached, lastRefresh) => ({
         ok: true,
         projectName: project,

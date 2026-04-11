@@ -38,6 +38,7 @@ export interface RelayBuildSummary {
   buildNumber: string;
   definitionId?: number;
   definitionName: string;
+  commitMessage?: string;
   status: string;
   result: string;
   queueTime?: string;
