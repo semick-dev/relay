@@ -4,11 +4,12 @@
 
   const state = {
     orgUrl: bootstrap.savedState.orgUrl || "",
-    activeTheme: bootstrap.savedState.activeTheme || "neon",
+    activeTheme: bootstrap.savedState.activeTheme || "githubdark",
     selectedProject: bootstrap.initialProject || "",
     loadedDefinitionsProject: "",
     selectedDefinition: null,
     definitions: [],
+    definitionsLoading: false,
     definitionFilter: "",
     definitionBuilds: [],
     definitionBuildsMeta: null,
@@ -117,17 +118,22 @@
   }
 
   async function loadDefinitions(forceRefresh) {
+    state.definitionsLoading = true;
     elements.mainStatus.textContent = "Preparing build definitions...";
-    await apiPost(`/api/projects/${encodeURIComponent(state.selectedProject)}/definitions/precache`, {
-      orgUrl: state.orgUrl,
-      limitedRefresh: true
-    });
-    await pollDefinitionsStatus();
-    const url = `/api/projects/${encodeURIComponent(state.selectedProject)}/definitions?orgUrl=${encodeURIComponent(state.orgUrl)}${forceRefresh ? "&refresh=1" : ""}`;
-    const response = await apiGet(url);
-    state.definitions = response.definitions;
-    state.loadedDefinitionsProject = state.selectedProject;
-    state.definitionsMeta = response;
+    try {
+      await apiPost(`/api/projects/${encodeURIComponent(state.selectedProject)}/definitions/precache`, {
+        orgUrl: state.orgUrl,
+        limitedRefresh: true
+      });
+      await pollDefinitionsStatus();
+      const url = `/api/projects/${encodeURIComponent(state.selectedProject)}/definitions?orgUrl=${encodeURIComponent(state.orgUrl)}${forceRefresh ? "&refresh=1" : ""}`;
+      const response = await apiGet(url);
+      state.definitions = response.definitions;
+      state.loadedDefinitionsProject = state.selectedProject;
+      state.definitionsMeta = response;
+    } finally {
+      state.definitionsLoading = false;
+    }
   }
 
   async function openDefinition(definition, replaceHistory) {
@@ -259,12 +265,9 @@
     elements.toolbar.innerHTML = `
       <div class="definitions-toolbar">
         <input id="definition-filter" class="definitions-filter" type="text" placeholder="Filter definitions like python* or api" value="${escapeAttr(state.definitionFilter)}" />
-        <div class="progress-wrap">
-          <div class="progress-meta">
-            <span>Definition cache warmup</span>
-            <span id="definitions-progress-label">Idle</span>
-          </div>
-          <div class="progress-bar"><div id="definitions-progress-bar" class="progress-bar__fill" style="width:0%"></div></div>
+        <div id="definitions-loading" class="definitions-loading ${state.definitionsLoading ? "" : "is-hidden"}">
+          <span class="spinner"></span>
+          <span id="definitions-loading-label">Loading definitions...</span>
         </div>
       </div>
     `;
@@ -276,17 +279,18 @@
   }
 
   function updateDefinitionsProgress(status) {
-    const label = document.getElementById("definitions-progress-label");
-    const bar = document.getElementById("definitions-progress-bar");
-    if (!label || !bar) {
+    const host = document.getElementById("definitions-loading");
+    const label = document.getElementById("definitions-loading-label");
+    if (!host || !label) {
       return;
     }
-    const total = Math.max(status.totalCount || status.loadedCount || 1, 1);
-    const pct = status.loadedCount === 0 ? 0 : Math.min(100, Math.round((status.loadedCount / total) * 100));
-    label.textContent = status.running
-      ? `${status.loadedCount}/${total} cached`
-      : `${status.loadedCount} cached`;
-    bar.style.width = `${pct}%`;
+    if (state.definitionsLoading && status.running) {
+      host.classList.remove("is-hidden");
+      const total = Math.max(status.totalCount || status.loadedCount || 1, 1);
+      label.textContent = `Loading definitions... ${status.loadedCount}/${total}`;
+      return;
+    }
+    host.classList.add("is-hidden");
   }
 
   function renderDefinitionsTree() {

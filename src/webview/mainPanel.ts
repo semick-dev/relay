@@ -29,6 +29,7 @@ export class RelayMainPanel {
       vscode.ViewColumn.One,
       {
         enableScripts: true,
+        enableFindWidget: true,
         retainContextWhenHidden: true,
         localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, "media")]
       }
@@ -94,8 +95,9 @@ export class RelayMainPanel {
       apiBase: this.apiBase,
       telemetryBase: this.apiBase,
       savedState: state,
-      themeIds: ["neon", "nightwave", "ember"],
+      themeIds: ["githubdark", "neon", "nightwave", "ember"],
       themeUrls: {
+        githubdark: webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "media", "theme-githubdark.css")).toString(),
         neon: webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "media", "theme-neon.css")).toString(),
         nightwave: webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "media", "theme-nightwave.css")).toString(),
         ember: webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "media", "theme-ember.css")).toString()
@@ -170,7 +172,7 @@ export class RelayMainPanel {
   private getState(): RelayPersistedState {
     const stored = this.context.globalState.get<RelayPersistedState>(STATE_KEY);
     return {
-      activeTheme: isThemeId(stored?.activeTheme) ? stored.activeTheme : "neon",
+      activeTheme: isThemeId(stored?.activeTheme) ? stored.activeTheme : "githubdark",
       orgUrl: stored?.orgUrl ?? ""
     };
   }
@@ -186,5 +188,5 @@ function createNonce(): string {
 }
 
 function isThemeId(value: unknown): value is ThemeId {
-  return value === "neon" || value === "nightwave" || value === "ember";
+  return value === "githubdark" || value === "neon" || value === "nightwave" || value === "ember";
 }

@@ -5,7 +5,7 @@ import { RelayBootstrap, RelayPersistedState, RelaySubview, ThemeId } from "../s
 const STATE_KEY = "relay.uiState";
 
 const DEFAULT_STATE: RelayPersistedState = {
-  activeTheme: "neon",
+  activeTheme: "githubdark",
   orgUrl: ""
 };
 
@@ -83,8 +83,9 @@ export class RelaySidebarProvider implements vscode.WebviewViewProvider, vscode.
       apiBase: this.apiBase,
       telemetryBase: this.apiBase,
       savedState: this.getState(),
-      themeIds: ["neon", "nightwave", "ember"],
+      themeIds: ["githubdark", "neon", "nightwave", "ember"],
       themeUrls: {
+        githubdark: webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "media", "theme-githubdark.css")).toString(),
         neon: webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "media", "theme-neon.css")).toString(),
         nightwave: webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "media", "theme-nightwave.css")).toString(),
         ember: webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "media", "theme-ember.css")).toString()
@@ -115,9 +116,8 @@ export class RelaySidebarProvider implements vscode.WebviewViewProvider, vscode.
   <div id="app" class="sidebar-shell">
     <aside class="sidebar sidebar--standalone">
       <div class="sidebar__header">
-        <p class="eyebrow">Relay</p>
-        <h1>ADO Build UI</h1>
-        <p class="muted">Cache-heavy. Debugging-forward.</p>
+        <p class="eyebrow">Azure DevOps</p>
+        <h1>Relay</h1>
       </div>
 
       <div class="sidebar__group">
@@ -171,7 +171,7 @@ function createNonce(): string {
 }
 
 function isThemeId(value: unknown): value is ThemeId {
-  return value === "neon" || value === "nightwave" || value === "ember";
+  return value === "githubdark" || value === "neon" || value === "nightwave" || value === "ember";
 }
 
 function isSubview(value: unknown): value is RelaySubview {

@@ -1,6 +1,6 @@
 export type LayoutMode = "main" | "split";
 
-export type ThemeId = "neon" | "nightwave" | "ember";
+export type ThemeId = "githubdark" | "neon" | "nightwave" | "ember";
 
 export interface RelayPersistedState {
   activeTheme: ThemeId;

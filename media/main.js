@@ -4,7 +4,7 @@
 
   const state = {
     orgUrl: bootstrap.savedState.orgUrl || "",
-    activeTheme: bootstrap.savedState.activeTheme || "neon"
+    activeTheme: bootstrap.savedState.activeTheme || "githubdark"
   };
 
   const elements = {
@@ -99,6 +99,7 @@
 
   function renderThemes() {
     const themeConfig = {
+      githubdark: ["#2f81f7", "#30363d"],
       neon: ["#ff4fd8", "#56d7ff"],
       nightwave: ["#26b4ff", "#2effc8"],
       ember: ["#ff7a4f", "#ffcc5c"]

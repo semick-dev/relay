@@ -1,0 +1,24 @@
+:root {
+  --bg-0: #0d1117;
+  --bg-1: #0d1117;
+  --bg-2: #161b22;
+  --bg-accent-soft: rgba(56, 139, 253, 0.08);
+  --bg-accent-low: rgba(31, 111, 235, 0.06);
+  --fg-0: #e6edf3;
+  --fg-1: #c9d1d9;
+  --fg-2: #8b949e;
+  --border-0: #30363d;
+  --border-1: #30363d;
+  --accent-0: #2f81f7;
+  --accent-1: #58a6ff;
+  --focus-ring: rgba(56, 139, 253, 0.28);
+  --input-bg: #010409;
+  --button-fg: #ffffff;
+  --button-ghost-bg: rgba(110, 118, 129, 0.1);
+  --card-bg: #0d1117;
+  --card-bg-active: #161b22;
+  --panel-bg-0: #0d1117;
+  --panel-bg-1: #0d1117;
+  --pill-bg: rgba(56, 139, 253, 0.12);
+  --banner-bg: rgba(56, 139, 253, 0.08);
+}
