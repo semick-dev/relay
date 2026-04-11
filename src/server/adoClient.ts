@@ -1,4 +1,5 @@
 import {
+  RelayArtifactSummary,
   RelayBuildDetails,
   RelayBuildSummary,
   RelayDefinitionSummary,
@@ -130,6 +131,34 @@ export class RelayAdoClient {
     return await response.text();
   }
 
+  async listArtifacts(orgUrl: string, project: string, buildId: number): Promise<RelayArtifactSummary[]> {
+    const url = new URL(`${encodeURIComponent(project)}/_apis/build/builds/${buildId}/artifacts`, normalizeOrgUrl(orgUrl));
+    url.searchParams.set("api-version", "7.1");
+    const payload = await this.requestJson<AdoArtifactsResponse>(url.toString());
+    return (payload.value ?? []).map((artifact) => ({
+      id: artifact.id,
+      name: artifact.name,
+      resourceType: artifact.resource?.type,
+      downloadUrl: artifact.resource?.downloadUrl
+    }));
+  }
+
+  async downloadArtifact(downloadUrl: string): Promise<Buffer> {
+    this.ensureAuth();
+    const auth = Buffer.from(`:${this.token ?? ""}`, "utf8").toString("base64");
+    const response = await fetch(downloadUrl, {
+      headers: {
+        Authorization: `Basic ${auth}`
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`ADO artifact download failed (${response.status}) for ${downloadUrl}`);
+    }
+
+    return Buffer.from(await response.arrayBuffer());
+  }
+
   private async requestJson<T>(url: string): Promise<T> {
     const response = await this.request<T>(url);
     return response.body;
@@ -238,6 +267,17 @@ interface AdoBuild {
 
 interface AdoTimelineResponse {
   records?: AdoTimelineRecord[];
+}
+
+interface AdoArtifactsResponse {
+  value?: Array<{
+    id?: number;
+    name: string;
+    resource?: {
+      type?: string;
+      downloadUrl?: string;
+    };
+  }>;
 }
 
 interface AdoTimelineRecord {

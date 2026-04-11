@@ -72,4 +72,9 @@ export class RelayStorage {
   getBuildFilePath(buildId: number, relativePath: string): string {
     return path.join(this.buildDir, String(buildId), relativePath);
   }
+
+  async writeFileBytes(filePath: string, content: Buffer): Promise<void> {
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(filePath, content);
+  }
 }

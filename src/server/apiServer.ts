@@ -5,6 +5,9 @@ import { RelayCacheStore } from "./cacheStore";
 import { RelayStorage } from "./storage";
 import { RelayTelemetrySink } from "./telemetry";
 import {
+  RelayArtifactDownloadResponse,
+  RelayArtifactsResponse,
+  RelayArtifactSummary,
   BuildResponse,
   BuildsResponse,
   DefinitionsPrecacheStatusResponse,
@@ -165,6 +168,12 @@ export class RelayApiServer {
           return;
         }
 
+        if (pathParts[4] === "artifacts" && !pathParts[5]) {
+          const payload = await this.loadArtifacts(orgUrl, project, buildId, refresh);
+          this.sendJson(res, 200, payload);
+          return;
+        }
+
         if (pathParts[4] === "logs" && pathParts[5]) {
           const logId = Number(pathParts[5]);
           const payload = await this.loadTaskLog(orgUrl, project, buildId, logId, refresh);
@@ -175,6 +184,20 @@ export class RelayApiServer {
         const payload = await this.loadBuild(orgUrl, project, buildId, refresh);
         this.sendJson(res, 200, payload);
         return;
+      }
+
+      if (method === "POST" && requestUrl.pathname.startsWith("/api/builds/")) {
+        const pathParts = requestUrl.pathname.split("/");
+        const buildId = Number(pathParts[3] ?? "0");
+        const orgUrl = requestUrl.searchParams.get("orgUrl") ?? "";
+        const project = requestUrl.searchParams.get("project") ?? "";
+
+        if (pathParts[4] === "artifacts" && pathParts[5] === "download") {
+          const body = await readJsonBody<{ artifactName?: string; targetFolder?: string }>(req);
+          const payload = await this.downloadArtifact(orgUrl, project, buildId, body.artifactName ?? "", body.targetFolder ?? "");
+          this.sendJson(res, 200, payload);
+          return;
+        }
       }
 
       if (method === "POST" && requestUrl.pathname === "/api/cache/refresh") {
@@ -376,6 +399,62 @@ export class RelayApiServer {
     await this.storage.writeBuildText(buildId, relativePath, content);
 
     return this.buildTaskLogResponse(buildId, logId, false, timestamp, content, relativePath, sizeBytes);
+  }
+
+  private async loadArtifacts(orgUrl: string, project: string, buildId: number, forceRefresh: boolean): Promise<RelayArtifactsResponse> {
+    const build = await this.loadBuild(orgUrl, project, buildId, forceRefresh);
+    const completed = isBuildCompleted(build.build);
+    const cachedArtifacts = completed && !forceRefresh
+      ? await this.storage.readBuildJson<RelayArtifactSummary[]>(buildId, "artifacts.json")
+      : null;
+    const timestamp = await this.storage.readBuildTimestamp(buildId) ?? build.build.lastRefresh;
+
+    if (cachedArtifacts) {
+      return {
+        ok: true,
+        buildId,
+        cached: true,
+        lastRefresh: timestamp,
+        artifacts: cachedArtifacts
+      };
+    }
+
+    const artifacts = await this.adoClient.listArtifacts(orgUrl, project, buildId);
+    const refreshed = new Date().toISOString();
+    await this.storage.writeBuildJson(buildId, "artifacts.json", artifacts);
+    await this.storage.writeBuildTimestamp(buildId, refreshed);
+    return {
+      ok: true,
+      buildId,
+      cached: false,
+      lastRefresh: refreshed,
+      artifacts
+    };
+  }
+
+  private async downloadArtifact(orgUrl: string, project: string, buildId: number, artifactName: string, targetFolder: string): Promise<RelayArtifactDownloadResponse> {
+    if (!artifactName || !targetFolder) {
+      throw new Error("artifactName and targetFolder are required.");
+    }
+
+    const artifacts = await this.loadArtifacts(orgUrl, project, buildId, false);
+    const artifact = artifacts.artifacts.find((item) => item.name === artifactName);
+    if (!artifact?.downloadUrl) {
+      throw new Error(`Artifact ${artifactName} does not have a download URL.`);
+    }
+
+    const bytes = await this.adoClient.downloadArtifact(artifact.downloadUrl);
+    const safeName = artifact.name.replace(/[^\w.-]+/g, "_");
+    const extension = artifact.resourceType === "FilePath" ? "" : ".zip";
+    const savedPath = `${targetFolder}/${safeName}${extension}`;
+    await this.storage.writeFileBytes(savedPath, bytes);
+
+    return {
+      ok: true,
+      buildId,
+      artifactName,
+      savedPath
+    };
   }
 
   private async getDefinitionsStatus(orgUrl: string, project: string): Promise<DefinitionsPrecacheStatusResponse> {

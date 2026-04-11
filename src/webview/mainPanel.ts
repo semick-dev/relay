@@ -70,6 +70,20 @@ export class RelayMainPanel {
 
     if (typed.type === "setTitle" && typeof typed.title === "string" && this.panel) {
       this.panel.title = typed.title;
+      return;
+    }
+
+    if (typed.type === "chooseFolder" && this.panel) {
+      const selection = await vscode.window.showOpenDialog({
+        canSelectFiles: false,
+        canSelectFolders: true,
+        canSelectMany: false,
+        openLabel: "Use Folder"
+      });
+      this.panel.webview.postMessage({
+        type: "folderChosen",
+        folder: selection?.[0]?.fsPath ?? ""
+      });
     }
   }
 

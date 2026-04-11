@@ -17,6 +17,9 @@
     currentTimeline: [],
     currentTimelineMeta: null,
     currentTask: null,
+    currentArtifacts: [],
+    currentArtifactsMeta: null,
+    artifactTargetFolder: "",
     navState: null
   };
 
@@ -44,6 +47,12 @@
     if (message.type === "themeChanged" && bootstrap.themeUrls[message.themeId]) {
       state.activeTheme = message.themeId;
       applyTheme(message.themeId);
+    }
+    if (message.type === "folderChosen" && typeof message.folder === "string") {
+      state.artifactTargetFolder = message.folder;
+      if (state.currentBuild) {
+        openArtifactsPane();
+      }
     }
   });
 
@@ -146,6 +155,7 @@
     const response = await apiGet(url);
     state.currentBuild = response.build;
     state.currentTask = null;
+    state.currentArtifacts = [];
     const timelineResponse = await apiGet(`/api/builds/${buildId}/timeline?orgUrl=${encodeURIComponent(state.orgUrl)}&project=${encodeURIComponent(state.selectedProject)}`);
     state.currentTimeline = timelineResponse.timeline;
     state.currentTimelineMeta = timelineResponse;
@@ -408,6 +418,9 @@
       </div>
       <details class="build-summary" open>
         <summary>Build Details</summary>
+        <div class="build-summary__actions">
+          <button id="build-artifacts-button" class="button button--ghost">Artifacts</button>
+        </div>
         <div class="build-summary__grid">
           ${detailCard("Definition", state.currentBuild.definitionName)}
           ${detailCard("Project", state.currentBuild.projectName)}
@@ -428,6 +441,9 @@
       </section>
     `;
     document.getElementById("build-page-back").addEventListener("click", () => history.back());
+    document.getElementById("build-artifacts-button").addEventListener("click", () => {
+      void loadArtifacts(false);
+    });
     for (const button of elements.buildList.querySelectorAll("[data-task-name][data-log-id]")) {
       button.addEventListener("click", () => {
         void openTaskPane(button.getAttribute("data-task-name"), Number(button.getAttribute("data-log-id")));
@@ -474,6 +490,84 @@
           </div>
         </div>
       `;
+  }
+
+  async function loadArtifacts(forceRefresh) {
+    const response = await apiGet(`/api/builds/${state.currentBuild.id}/artifacts?orgUrl=${encodeURIComponent(state.orgUrl)}&project=${encodeURIComponent(state.selectedProject)}${forceRefresh ? "&refresh=1" : ""}`);
+    state.currentArtifacts = response.artifacts;
+    state.currentArtifactsMeta = response;
+    openArtifactsPane();
+  }
+
+  function openArtifactsPane() {
+    elements.content.classList.add("is-split");
+    elements.detailPanel.classList.remove("is-hidden");
+    elements.detailTitle.textContent = "Artifacts";
+    setDetailCachePill(state.currentArtifactsMeta?.cached, state.currentArtifactsMeta?.lastRefresh, "Refresh artifacts");
+    elements.detailBody.className = "detail-pane";
+    elements.detailBody.innerHTML = `
+      <div class="selector-shell">
+        <label class="eyebrow" for="artifact-folder">Target Folder</label>
+        <div class="selector-row selector-row--artifacts">
+          <input id="artifact-folder" class="definitions-filter" type="text" value="${escapeAttr(state.artifactTargetFolder)}" placeholder="Choose a folder to download into" />
+          <button id="artifact-folder-pick" class="button button--ghost">Choose</button>
+        </div>
+      </div>
+      <div class="definition-builds-meta muted">
+        ${state.currentArtifactsMeta?.cached ? "cached" : "fresh"} ·
+        ${escapeHtml(String(state.currentArtifacts.length))} artifacts ·
+        ${escapeHtml(formatDate(state.currentArtifactsMeta?.lastRefresh))}
+      </div>
+      <div id="artifact-list" class="artifact-list"></div>
+    `;
+    document.getElementById("artifact-folder").addEventListener("input", (event) => {
+      state.artifactTargetFolder = event.target.value;
+    });
+    document.getElementById("artifact-folder-pick").addEventListener("click", () => {
+      vscode.postMessage({ type: "chooseFolder" });
+    });
+    renderArtifactList();
+  }
+
+  function renderArtifactList() {
+    const host = document.getElementById("artifact-list");
+    if (!host) {
+      return;
+    }
+    if (!state.currentArtifacts.length) {
+      host.className = "build-list empty-state";
+      host.textContent = "No artifacts were published for this build.";
+      return;
+    }
+    host.className = "artifact-list";
+    host.innerHTML = state.currentArtifacts.map((artifact) => `
+      <div class="artifact-item">
+        <div>
+          <div class="artifact-item__name">${escapeHtml(artifact.name)}</div>
+          <div class="build-meta">
+            <span>${escapeHtml(artifact.resourceType || "artifact")}</span>
+          </div>
+        </div>
+        <button class="button button--primary" data-artifact-name="${escapeAttr(artifact.name)}">Download</button>
+      </div>
+    `).join("");
+    for (const button of host.querySelectorAll("[data-artifact-name]")) {
+      button.addEventListener("click", () => {
+        void downloadArtifact(button.getAttribute("data-artifact-name"));
+      });
+    }
+  }
+
+  async function downloadArtifact(artifactName) {
+    if (!state.artifactTargetFolder) {
+      renderBanner("Choose a target folder before downloading an artifact.");
+      return;
+    }
+    const response = await apiPost(`/api/builds/${state.currentBuild.id}/artifacts/download?orgUrl=${encodeURIComponent(state.orgUrl)}&project=${encodeURIComponent(state.selectedProject)}`, {
+      artifactName,
+      targetFolder: state.artifactTargetFolder
+    });
+    renderBanner(`Downloaded ${artifactName} to ${response.savedPath}`);
   }
 
   function closeTaskPane() {
@@ -578,6 +672,10 @@
   }
 
   async function refreshDetailPane() {
+    if (state.currentBuild && elements.detailTitle.textContent === "Artifacts") {
+      await loadArtifacts(true);
+      return;
+    }
     if (state.currentTask && state.currentBuild) {
       await openTaskPane(state.currentTask.taskName, state.currentTask.logId, true);
       return;

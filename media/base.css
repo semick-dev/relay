@@ -469,6 +469,10 @@ input:focus {
   gap: 10px;
 }
 
+.selector-row--artifacts {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
 .build-page {
   display: grid;
   gap: var(--space-4);
@@ -493,6 +497,10 @@ input:focus {
   cursor: pointer;
   padding: 14px 16px;
   font-weight: 600;
+}
+
+.build-summary__actions {
+  padding: 0 16px 12px;
 }
 
 .build-summary__grid {
@@ -612,6 +620,26 @@ input:focus {
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.artifact-list {
+  display: grid;
+  gap: 10px;
+}
+
+.artifact-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border-0);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+}
+
+.artifact-item__name {
+  font-weight: 600;
 }
 
 .theme-picker {

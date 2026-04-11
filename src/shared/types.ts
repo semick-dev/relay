@@ -90,6 +90,28 @@ export interface RelayTaskLogResponse {
   downloadPath?: string;
 }
 
+export interface RelayArtifactSummary {
+  id?: number;
+  name: string;
+  resourceType?: string;
+  downloadUrl?: string;
+}
+
+export interface RelayArtifactsResponse {
+  ok: true;
+  buildId: number;
+  cached: boolean;
+  lastRefresh: string;
+  artifacts: RelayArtifactSummary[];
+}
+
+export interface RelayArtifactDownloadResponse {
+  ok: true;
+  buildId: number;
+  artifactName: string;
+  savedPath: string;
+}
+
 export interface RelayDefinitionSummary {
   id: number;
   name: string;
