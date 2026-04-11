@@ -2,7 +2,7 @@
 
 A cache-heavy local UI for fast interaction with ADO projects. Makes grepping through logs _extremely_ easy.
 
-![demo](relay_demo.gif)
+https://github.com/user-attachments/assets/6ae4ba7d-af43-40e9-b1f7-e1ae80c4af1a
 
 ## Current shape
 
