@@ -1,6 +1,8 @@
 # relay
 
-A cache-heavy local UI for fast interaction with ADO projects.
+A cache-heavy local UI for fast interaction with ADO projects. Makes grepping through logs _extremely_ easy.
+
+![demo](relay_demo.gif)
 
 ## Current shape
 
