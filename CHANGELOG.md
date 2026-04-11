@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.5
+
+- resolve readme confusion
+
+## 0.0.4
+
+- change demo image to external image
+
 ## 0.0.3
 
 - Rewrote the public README to focus on the shipped extension experience.
