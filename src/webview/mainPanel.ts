@@ -156,6 +156,7 @@ export class RelayMainPanel {
       </div>
     </section>
     <section class="panel panel--detail is-hidden" id="detail-panel">
+      <span id="detail-status-corner" class="panel-corner is-hidden" aria-hidden="true"></span>
       <div class="panel__header">
         <div>
           <p id="detail-kind" class="eyebrow">Build</p>

@@ -35,6 +35,7 @@
     content: document.getElementById("content"),
     mainCachePill: document.getElementById("main-cache-pill"),
     detailPanel: document.getElementById("detail-panel"),
+    detailStatusCorner: document.getElementById("detail-status-corner"),
     detailKind: document.getElementById("detail-kind"),
     detailTitle: document.getElementById("detail-title"),
     detailBody: document.getElementById("detail-body"),
@@ -460,7 +461,10 @@
         void openTaskPane(
           button.getAttribute("data-task-name"),
           Number(button.getAttribute("data-log-id")),
-          Number(button.getAttribute("data-log-lines") || "0")
+          Number(button.getAttribute("data-log-lines") || "0"),
+          button.getAttribute("data-task-status-class") || "task-row__dot--neutral",
+          button.getAttribute("data-task-start-time") || "",
+          button.getAttribute("data-task-finish-time") || ""
         );
       });
     }
@@ -469,17 +473,24 @@
   function clearBuildPageChrome() {
     elements.mainPanel.classList.remove("is-build-page");
     elements.mainStatusCorner.className = "panel-corner is-hidden";
+    elements.detailPanel.classList.remove("is-task-pane");
+    elements.detailStatusCorner.className = "panel-corner is-hidden";
     elements.detailKind.textContent = "Build";
   }
 
-  async function openTaskPane(taskName, logId, logLineCount = 0, forceRefresh = false) {
+  async function openTaskPane(taskName, logId, logLineCount = 0, taskStatusClass = "task-row__dot--neutral", taskStartTime = "", taskFinishTime = "", forceRefresh = false) {
     state.currentTask = {
       taskName,
       logId,
-      logLineCount
+      logLineCount,
+      taskStatusClass,
+      taskStartTime,
+      taskFinishTime
     };
     elements.content.classList.add("is-split");
     elements.detailPanel.classList.remove("is-hidden");
+    elements.detailPanel.classList.add("is-task-pane");
+    elements.detailStatusCorner.className = `panel-corner ${mapTaskStatusCornerClass(taskStatusClass)}`;
     elements.detailKind.textContent = "Task";
     elements.detailTitle.textContent = taskName;
     elements.detailBody.className = "detail-pane";
@@ -493,7 +504,10 @@
       setDetailCachePill(info.cached, info.lastRefresh, "Refresh task output");
       elements.detailBody.innerHTML = `
         <div class="task-pane">
-          <div class="definition-builds-meta muted">${info.cached ? "cached" : "not downloaded"} · ${formatTaskLogMeta(info.sizeBytes, info.lineCount || logLineCount)} · ${escapeHtml(formatDate(info.lastRefresh))}</div>
+          <div class="task-pane__meta-row">
+            <div class="definition-builds-meta muted">${formatTaskTiming(taskStartTime, taskFinishTime)} · ${info.cached ? "cached" : "not downloaded"} · ${formatTaskLogMeta(info.sizeBytes, info.lineCount || logLineCount)}</div>
+            ${renderInlineCachePill(info.cached, info.lastRefresh, "Refresh task output")}
+          </div>
           <div class="banner">Task output is larger than 1MB.</div>
           ${info.downloadPath ? `
             <div class="detail-card">
@@ -515,6 +529,7 @@
           `}
         </div>
       `;
+      bindInlineTaskCachePill(taskName, logId, logLineCount, taskStatusClass);
       const downloadButton = document.getElementById("task-download-button");
       if (downloadButton) {
         downloadButton.addEventListener("click", async () => {
@@ -522,7 +537,7 @@
           const label = document.getElementById("task-download-label");
           progress.classList.remove("is-hidden");
           label.textContent = "Downloading";
-          await openTaskPane(taskName, logId, logLineCount, true);
+          await openTaskPane(taskName, logId, logLineCount, taskStatusClass, taskStartTime, taskFinishTime, true);
         });
       }
       const showButton = document.getElementById("task-show-log-button");
@@ -542,13 +557,19 @@
     elements.detailBody.innerHTML = response.inline
       ? `
         <div class="task-pane">
-          <div class="definition-builds-meta muted">${response.cached ? "cached" : "fresh"} · ${formatBytes(response.sizeBytes)} · ${escapeHtml(formatDate(response.lastRefresh))}</div>
+          <div class="task-pane__meta-row">
+            <div class="definition-builds-meta muted">${formatTaskTiming(taskStartTime, taskFinishTime)} · ${response.cached ? "cached" : "fresh"} · ${formatBytes(response.sizeBytes)}</div>
+            ${renderInlineCachePill(response.cached, response.lastRefresh, "Refresh task output")}
+          </div>
           <pre class="task-log">${escapeHtml(response.content || "")}</pre>
         </div>
       `
       : `
         <div class="task-pane">
-          <div class="definition-builds-meta muted">${response.cached ? "cached" : "fresh"} · ${formatBytes(response.sizeBytes)} · ${escapeHtml(formatDate(response.lastRefresh))}</div>
+          <div class="task-pane__meta-row">
+            <div class="definition-builds-meta muted">${formatTaskTiming(taskStartTime, taskFinishTime)} · ${response.cached ? "cached" : "fresh"} · ${formatBytes(response.sizeBytes)}</div>
+            ${renderInlineCachePill(response.cached, response.lastRefresh, "Refresh task output")}
+          </div>
           <div class="banner">Task output is larger than 1MB.</div>
           <div class="detail-card">
             <p class="eyebrow">Local Path</p>
@@ -559,6 +580,7 @@
           </div>
         </div>
       `;
+    bindInlineTaskCachePill(taskName, logId, logLineCount, taskStatusClass, taskStartTime, taskFinishTime);
     const showButton = document.getElementById("task-show-log-button");
     if (showButton && response.downloadPath) {
       showButton.addEventListener("click", () => {
@@ -703,7 +725,7 @@
       `;
 
       const row = node.logId
-        ? `<button class="task-row" data-task-name="${escapeAttr(node.name)}" data-log-id="${node.logId}" data-log-lines="${node.logLineCount || 0}">${label}</button>`
+        ? `<button class="task-row" data-task-name="${escapeAttr(node.name)}" data-log-id="${node.logId}" data-log-lines="${node.logLineCount || 0}" data-task-status-class="${statusClass}" data-task-start-time="${escapeAttr(node.startTime || "")}" data-task-finish-time="${escapeAttr(node.finishTime || "")}">${label}</button>`
         : `<div class="task-row task-row--static">${label}</div>`;
 
       return `
@@ -772,7 +794,15 @@
       return;
     }
     if (state.currentTask && state.currentBuild) {
-      await openTaskPane(state.currentTask.taskName, state.currentTask.logId, state.currentTask.logLineCount, true);
+      await openTaskPane(
+        state.currentTask.taskName,
+        state.currentTask.logId,
+        state.currentTask.logLineCount,
+        state.currentTask.taskStatusClass,
+        state.currentTask.taskStartTime,
+        state.currentTask.taskFinishTime,
+        true
+      );
       return;
     }
     if (state.currentBuild) {
@@ -1005,7 +1035,21 @@
   }
 
   function setDetailCachePill(cached, lastRefresh, title) {
-    setCachePill(elements.detailCachePill, cached, lastRefresh, title, "Task");
+    setCachePill(elements.detailCachePill, cached, lastRefresh, title, "");
+  }
+
+  function renderInlineCachePill(cached, lastRefresh, title) {
+    return `<button id="task-inline-cache-pill" class="pill pill--button" title="${escapeAttr(title)}">${escapeHtml(formatCachePillLabel(cached, lastRefresh, ""))}</button>`;
+  }
+
+  function bindInlineTaskCachePill(taskName, logId, logLineCount, taskStatusClass, taskStartTime, taskFinishTime) {
+    const button = document.getElementById("task-inline-cache-pill");
+    if (!button) {
+      return;
+    }
+    button.addEventListener("click", () => {
+      void openTaskPane(taskName, logId, logLineCount, taskStatusClass, taskStartTime, taskFinishTime, true);
+    });
   }
 
   function setCachePill(element, cached, lastRefresh, title, prefix) {
@@ -1018,8 +1062,12 @@
     }
     element.disabled = false;
     element.classList.remove("is-disabled");
+    element.textContent = formatCachePillLabel(cached, lastRefresh, prefix);
+  }
+
+  function formatCachePillLabel(cached, lastRefresh, prefix) {
     const label = `${cached ? "Cached" : "Fresh"} · ${formatDate(lastRefresh)}`;
-    element.textContent = prefix ? `${prefix} · ${label}` : label;
+    return prefix ? `${prefix} · ${label}` : label;
   }
 
   function detailCard(label, value) {
@@ -1042,6 +1090,46 @@
       return `${(value / 1024).toFixed(1)} KB`;
     }
     return `${(value / (1024 * 1024)).toFixed(2)} MB`;
+  }
+
+  function formatTaskTiming(startTime, finishTime) {
+    if (!startTime && !finishTime) {
+      return "runtime unknown";
+    }
+    if (!startTime || !finishTime) {
+      return `started ${formatDate(startTime || finishTime)}`;
+    }
+    const start = new Date(startTime);
+    const finish = new Date(finishTime);
+    const durationMs = finish.getTime() - start.getTime();
+    return `${formatDate(startTime)} · ${formatDuration(durationMs)}`;
+  }
+
+  function formatDuration(durationMs) {
+    if (!Number.isFinite(durationMs) || durationMs < 0) {
+      return "duration unknown";
+    }
+    const totalSeconds = Math.floor(durationMs / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    if (hours > 0) {
+      return `${hours}h ${minutes}m ${seconds}s`;
+    }
+    if (minutes > 0) {
+      return `${minutes}m ${seconds}s`;
+    }
+    return `${seconds}s`;
+  }
+
+  function mapTaskStatusCornerClass(statusClass) {
+    if (statusClass === "task-row__dot--success") {
+      return "build-item__corner--success";
+    }
+    if (statusClass === "task-row__dot--failed") {
+      return "build-item__corner--failed";
+    }
+    return "build-item__corner--neutral";
   }
 
   function escapeHtml(value) {

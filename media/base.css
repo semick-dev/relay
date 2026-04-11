@@ -343,17 +343,62 @@ input:focus {
   margin-bottom: var(--space-4);
 }
 
+.panel__header > :first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .panel__header-actions {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex: 0 1 auto;
   min-width: 0;
+}
+
+.panel--detail .panel__header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.panel--detail .panel__header-actions {
+  justify-content: end;
+  flex-wrap: wrap;
+}
+
+.panel--detail .panel__header-actions .button {
+  flex: 0 0 auto;
+}
+
+.panel--detail .panel__header-actions .pill {
+  flex: 0 1 240px;
+}
+
+.panel--detail.is-task-pane .panel__header {
+  padding-right: 64px;
+}
+
+.panel--detail.is-task-pane .panel__header-actions {
+  display: block;
+  width: auto;
+  min-height: 44px;
+}
+
+.panel--detail.is-task-pane #detail-cache-pill {
+  display: none;
+}
+
+.panel--detail.is-task-pane #close-detail {
+  position: absolute;
+  top: 20px;
+  right: 65px;
 }
 
 .panel-corner {
   position: absolute;
-  top: 0;
-  right: 0;
+  top: 1px;
+  right: 1px;
   width: 44px;
   height: 44px;
   border-left: 1px solid var(--border-0);
@@ -457,6 +502,10 @@ input:focus {
   background: var(--pill-bg);
   white-space: nowrap;
   flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .pill--button {
@@ -552,6 +601,22 @@ input:focus {
   color: var(--fg-2);
   font-size: 0.75rem;
   white-space: nowrap;
+}
+
+.task-pane__meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.task-pane__meta-row .definition-builds-meta {
+  margin: 0;
+}
+
+.task-pane__meta-row .pill {
+  flex: 0 1 auto;
+  max-width: 100%;
 }
 
 .detail-card {
