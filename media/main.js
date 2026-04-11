@@ -78,7 +78,6 @@
         <div class="project-group__meta muted">${escapeHtml(project.description || project.state || "Project")}</div>
         <div class="project-subnav">
           <button class="project-subnav__item" data-view="definitions">Definitions</button>
-          <button class="project-subnav__item is-active" data-view="builds">Builds</button>
           <button class="project-subnav__item" data-view="artifacts">Artifacts</button>
         </div>
       `;

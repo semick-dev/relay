@@ -210,7 +210,7 @@ input:focus {
 
 .project-subnav {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
 }
 
@@ -422,6 +422,92 @@ input:focus {
 .detail-card code {
   font-family: var(--font-mono);
   font-size: 0.85rem;
+}
+
+.detail-pane,
+.task-pane {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.detail-pane--placeholder {
+  min-height: 220px;
+}
+
+.selector-shell {
+  display: grid;
+  gap: 8px;
+}
+
+.definition-builds-meta {
+  font-size: 0.82rem;
+  margin-bottom: 4px;
+}
+
+.selector-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+}
+
+.build-page {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.build-page__topbar,
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.build-summary {
+  border: 1px solid var(--border-0);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  overflow: hidden;
+}
+
+.build-summary > summary {
+  cursor: pointer;
+  padding: 14px 16px;
+  font-weight: 600;
+}
+
+.build-summary__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+
+.task-tree-shell {
+  display: grid;
+  gap: 14px;
+}
+
+.task-tree {
+  display: grid;
+  gap: 10px;
+}
+
+.task-row {
+  width: 100%;
+  text-align: left;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-0);
+  background: var(--card-bg);
+  color: var(--fg-0);
+  cursor: pointer;
+}
+
+.task-row:hover,
+.definition-item.is-active {
+  border-color: var(--accent-0);
+  background: var(--card-bg-active);
 }
 
 .theme-picker {

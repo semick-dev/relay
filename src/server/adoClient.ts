@@ -23,11 +23,14 @@ export class RelayAdoClient {
     }));
   }
 
-  async listBuilds(orgUrl: string, project: string, limit: number): Promise<RelayBuildSummary[]> {
+  async listBuilds(orgUrl: string, project: string, limit: number, definitionId?: number): Promise<RelayBuildSummary[]> {
     const url = new URL(`${encodeURIComponent(project)}/_apis/build/builds`, normalizeOrgUrl(orgUrl));
     url.searchParams.set("$top", String(limit));
     url.searchParams.set("queryOrder", "queueTimeDescending");
     url.searchParams.set("api-version", "7.1-preview.7");
+    if (definitionId) {
+      url.searchParams.set("definitions", String(definitionId));
+    }
     const payload = await this.requestJson<AdoBuildsResponse>(url.toString());
     return payload.value.map(mapBuildSummary);
   }
@@ -134,6 +137,7 @@ function mapBuildSummary(build: AdoBuild): RelayBuildSummary {
   return {
     id: build.id,
     buildNumber: build.buildNumber,
+    definitionId: build.definition?.id,
     definitionName: build.definition?.name ?? "Unknown",
     status: build.status ?? "unknown",
     result: build.result ?? "unknown",
@@ -185,6 +189,7 @@ interface AdoBuild {
   sourceBranch?: string;
   reason?: string;
   definition?: {
+    id?: number;
     name?: string;
   };
   project?: {

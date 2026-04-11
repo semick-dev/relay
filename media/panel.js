@@ -6,12 +6,15 @@
     orgUrl: bootstrap.savedState.orgUrl || "",
     activeTheme: bootstrap.savedState.activeTheme || "neon",
     selectedProject: bootstrap.initialProject || "",
-    currentView: bootstrap.initialView || "builds",
-    selectedBuildId: null,
-    visibleResource: null,
-    buildFilter: "all",
+    loadedDefinitionsProject: "",
+    selectedDefinition: null,
     definitions: [],
-    definitionFilter: ""
+    definitionFilter: "",
+    definitionBuilds: [],
+    definitionBuildsMeta: null,
+    buildFilter: "all",
+    currentBuild: null,
+    navState: null
   };
 
   const elements = {
@@ -31,11 +34,17 @@
   window.addEventListener("message", (event) => {
     const message = event.data || {};
     if (message.type === "openProject" && typeof message.project === "string") {
-      void openProject(message.project, message.view || "builds");
+      void openProject(message.project, message.view || "definitions");
     }
     if (message.type === "themeChanged" && bootstrap.themeUrls[message.themeId]) {
       state.activeTheme = message.themeId;
       applyTheme(message.themeId);
+    }
+  });
+
+  window.addEventListener("popstate", (event) => {
+    if (event.state) {
+      void restoreNavState(event.state, false);
     }
   });
 
@@ -58,68 +67,36 @@
       return;
     }
     if (state.selectedProject) {
-      await openProject(state.selectedProject, state.currentView);
+      await openProject(state.selectedProject, bootstrap.initialView || "definitions");
     }
   }
 
   function bindEvents() {
-    elements.closeDetail.addEventListener("click", closeDetail);
+    elements.closeDetail.addEventListener("click", () => {
+      closeTaskPane();
+    });
   }
 
   async function openProject(project, view) {
     state.selectedProject = project;
-    state.currentView = view;
-    state.selectedBuildId = null;
-    closeDetail();
+    state.selectedDefinition = null;
+    state.currentBuild = null;
+    state.definitionBuilds = [];
     setTitle(`Relay: ${project}`);
-    elements.mainTitle.textContent = project;
-
-    if (view === "definitions") {
-      await loadDefinitions(false);
-      return;
-    }
 
     if (view === "artifacts") {
+      commitNavState({ mode: "artifacts", project }, true);
       renderArtifactsPlaceholder();
       return;
     }
 
-    await loadBuilds(false);
-  }
-
-  async function loadBuilds(forceRefresh) {
-    state.visibleResource = { kind: "builds", project: state.selectedProject };
-    elements.mainStatus.textContent = "Loading recent builds...";
-    renderBuildToolbar();
-    const url = `/api/projects/${encodeURIComponent(state.selectedProject)}/builds?orgUrl=${encodeURIComponent(state.orgUrl)}${forceRefresh ? "&refresh=1" : ""}`;
-    const response = await apiGet(url);
-    state.builds = response.builds;
-    renderBuilds(response.builds, response.projectName, response.cached, response.lastRefresh);
-    await emit("relay.ui.panel.builds.loaded", {
-      project: state.selectedProject,
-      count: response.builds.length,
-      cached: response.cached
-    }, "span");
-  }
-
-  async function loadBuild(buildId, forceRefresh) {
-    state.selectedBuildId = buildId;
-    state.visibleResource = { kind: "build", project: state.selectedProject, buildId };
-    const url = `/api/builds/${buildId}?orgUrl=${encodeURIComponent(state.orgUrl)}&project=${encodeURIComponent(state.selectedProject)}${forceRefresh ? "&refresh=1" : ""}`;
-    const response = await apiGet(url);
-    openDetail(response.build);
-    await emit("relay.ui.panel.build.loaded", {
-      buildId,
-      cached: response.build.cached
-    }, "span");
+    await loadDefinitions(false);
+    commitNavState({ mode: "definitions", project }, true);
+    renderDefinitionsScreen();
   }
 
   async function loadDefinitions(forceRefresh) {
-    state.visibleResource = { kind: "definitions", project: state.selectedProject };
     elements.mainStatus.textContent = "Preparing build definitions...";
-    renderDefinitionsToolbar();
-    elements.buildList.className = "build-list empty-state";
-    elements.buildList.textContent = "Loading definitions...";
     await apiPost(`/api/projects/${encodeURIComponent(state.selectedProject)}/definitions/precache`, {
       orgUrl: state.orgUrl,
       limitedRefresh: true
@@ -128,15 +105,90 @@
     const url = `/api/projects/${encodeURIComponent(state.selectedProject)}/definitions?orgUrl=${encodeURIComponent(state.orgUrl)}${forceRefresh ? "&refresh=1" : ""}`;
     const response = await apiGet(url);
     state.definitions = response.definitions;
-    renderDefinitions(response.definitions, response.cached, response.lastRefresh);
-    await emit("relay.ui.panel.definitions.loaded", {
+    state.loadedDefinitionsProject = state.selectedProject;
+    state.definitionsMeta = response;
+  }
+
+  async function openDefinition(definition, replaceHistory) {
+    state.selectedDefinition = definition;
+    state.currentBuild = null;
+    await loadDefinitionBuilds(definition.id, true);
+    commitNavState({
+      mode: "definitionBuilds",
       project: state.selectedProject,
-      count: response.definitions.length,
-      cached: response.cached
+      definitionId: definition.id
+    }, replaceHistory);
+    renderDefinitionsScreen();
+  }
+
+  async function loadDefinitionBuilds(definitionId, forceRefresh) {
+    state.buildFilter = state.buildFilter || "all";
+    const url = `/api/projects/${encodeURIComponent(state.selectedProject)}/builds?orgUrl=${encodeURIComponent(state.orgUrl)}&definitionId=${definitionId}${forceRefresh ? "&refresh=1" : ""}`;
+    const response = await apiGet(url);
+    state.definitionBuilds = response.builds;
+    state.definitionBuildsMeta = response;
+  }
+
+  async function openBuild(buildId, replaceHistory) {
+    const url = `/api/builds/${buildId}?orgUrl=${encodeURIComponent(state.orgUrl)}&project=${encodeURIComponent(state.selectedProject)}`;
+    const response = await apiGet(url);
+    state.currentBuild = response.build;
+    commitNavState({
+      mode: "build",
+      project: state.selectedProject,
+      definitionId: state.selectedDefinition?.id,
+      buildId
+    }, replaceHistory);
+    renderBuildPage();
+    await emit("relay.ui.panel.build.loaded", {
+      buildId,
+      cached: response.build.cached
     }, "span");
   }
 
+  async function restoreNavState(navState, replaceHistory) {
+    state.selectedProject = navState.project;
+
+    if (navState.mode === "artifacts") {
+      commitNavState(navState, replaceHistory);
+      renderArtifactsPlaceholder();
+      return;
+    }
+
+    if (!state.definitions.length || state.loadedDefinitionsProject !== navState.project) {
+      await loadDefinitions(false);
+    }
+
+    if (navState.mode === "definitions") {
+      state.selectedDefinition = null;
+      state.currentBuild = null;
+      commitNavState(navState, replaceHistory);
+      renderDefinitionsScreen();
+      return;
+    }
+
+    const definition = resolveDefinitionReference(String(navState.definitionId ?? ""));
+    if (!definition) {
+      renderBanner("Could not restore the selected definition.");
+      renderDefinitionsScreen();
+      return;
+    }
+
+    state.selectedDefinition = definition;
+
+    if (navState.mode === "definitionBuilds") {
+      await loadDefinitionBuilds(definition.id, false);
+      commitNavState(navState, replaceHistory);
+      renderDefinitionsScreen();
+      return;
+    }
+
+    await loadDefinitionBuilds(definition.id, false);
+    await openBuild(navState.buildId, replaceHistory);
+  }
+
   async function pollDefinitionsStatus() {
+    renderDefinitionsToolbar();
     let attempts = 0;
     while (attempts < 120) {
       const status = await apiGet(`/api/projects/${encodeURIComponent(state.selectedProject)}/definitions/status?orgUrl=${encodeURIComponent(state.orgUrl)}`);
@@ -152,30 +204,31 @@
     }
   }
 
-  function renderBuildToolbar() {
-    elements.toolbar.className = "toolbar";
-    elements.toolbar.innerHTML = `
-      <div class="filter-row">
-        <button class="filter-chip ${state.buildFilter === "all" ? "is-active" : ""}" data-filter="all">All</button>
-        <button class="filter-chip ${state.buildFilter === "inProgress" ? "is-active" : ""}" data-filter="inProgress">In Progress</button>
-        <button class="filter-chip ${state.buildFilter === "failed" ? "is-active" : ""}" data-filter="failed">Failed / Cancelled</button>
-        <button class="filter-chip ${state.buildFilter === "success" ? "is-active" : ""}" data-filter="success">Success</button>
-      </div>
-    `;
-    for (const button of elements.toolbar.querySelectorAll("[data-filter]")) {
-      button.addEventListener("click", () => {
-        state.buildFilter = button.getAttribute("data-filter");
-        renderBuildToolbar();
-        renderBuilds(state.builds || [], state.selectedProject, true, new Date().toISOString());
-      });
+  function renderDefinitionsScreen() {
+    elements.content.classList.toggle("is-split", Boolean(state.selectedDefinition));
+    elements.detailPanel.classList.toggle("is-hidden", !state.selectedDefinition);
+    elements.mainTitle.textContent = state.selectedProject;
+    elements.detailTitle.textContent = state.selectedDefinition
+      ? `${state.selectedDefinition.name} · builds`
+      : "Definition builds";
+    renderDefinitionsToolbar();
+    renderDefinitionsTree();
+
+    if (!state.selectedDefinition) {
+      elements.detailBody.className = "detail-pane detail-pane--placeholder";
+      elements.detailBody.innerHTML = `<div class="empty-state">Choose a definition to load its builds.</div>`;
+      elements.mainStatus.textContent = `${state.selectedProject} · ${state.definitions.length} definitions`;
+      return;
     }
+
+    renderDefinitionBuildsPane();
   }
 
   function renderDefinitionsToolbar() {
     elements.toolbar.className = "toolbar toolbar--definitions";
     elements.toolbar.innerHTML = `
       <div class="definitions-toolbar">
-        <input id="definition-filter" class="definitions-filter" type="text" placeholder="Filter definitions with wildcards like python*" value="${escapeAttr(state.definitionFilter)}" />
+        <input id="definition-filter" class="definitions-filter" type="text" placeholder="Filter definitions like python* or api" value="${escapeAttr(state.definitionFilter)}" />
         <div class="progress-wrap">
           <div class="progress-meta">
             <span>Definition cache warmup</span>
@@ -188,41 +241,107 @@
     const input = document.getElementById("definition-filter");
     input.addEventListener("input", () => {
       state.definitionFilter = input.value;
-      renderDefinitions(state.definitions, true, new Date().toISOString());
+      renderDefinitionsTree();
     });
   }
 
   function updateDefinitionsProgress(status) {
-    if (elements.toolbar.classList.contains("is-hidden")) {
-      renderDefinitionsToolbar();
-    }
     const label = document.getElementById("definitions-progress-label");
     const bar = document.getElementById("definitions-progress-bar");
     if (!label || !bar) {
       return;
     }
     const total = Math.max(status.totalCount || status.loadedCount || 1, 1);
-    const pct = Math.max(5, Math.min(100, Math.round((status.loadedCount / total) * 100)));
+    const pct = status.loadedCount === 0 ? 0 : Math.min(100, Math.round((status.loadedCount / total) * 100));
     label.textContent = status.running
       ? `${status.loadedCount}/${total} cached`
       : `${status.loadedCount} cached`;
     bar.style.width = `${pct}%`;
   }
 
-  function renderBuilds(builds, projectName, cached, lastRefresh) {
-    const filtered = builds.filter((build) => matchesBuildFilter(build, state.buildFilter));
-    elements.buildList.className = "build-list";
+  function renderDefinitionsTree() {
+    const filtered = state.definitions.filter((definition) => matchesWildcard(definition.name, state.definitionFilter));
+    const tree = buildDefinitionTree(filtered);
+    elements.buildList.className = "definition-tree";
+    elements.buildList.innerHTML = tree || '<div class="empty-state">No definitions match the current filter.</div>';
+    for (const button of elements.buildList.querySelectorAll("[data-definition-id]")) {
+      button.addEventListener("click", () => {
+        const definition = resolveDefinitionReference(button.getAttribute("data-definition-id"));
+        if (definition) {
+          void openDefinition(definition, false);
+        }
+      });
+    }
+    elements.mainStatus.textContent = `${state.selectedProject} · ${filtered.length} definitions`;
+  }
+
+  function renderDefinitionBuildsPane() {
+    elements.detailBody.className = "detail-pane";
+    elements.detailBody.innerHTML = `
+      <div class="selector-shell">
+        <label class="eyebrow" for="definition-selector">Definition</label>
+        <div class="selector-row">
+          <input id="definition-selector" class="definitions-filter" type="text" value="${escapeAttr(`${state.selectedDefinition.id} · ${state.selectedDefinition.name}`)}" />
+          <button id="definition-selector-open" class="button button--primary">Load</button>
+          <button id="definition-selector-back" class="button button--ghost">Back</button>
+        </div>
+      </div>
+      <div class="definition-builds-meta muted">
+        #${escapeHtml(String(state.selectedDefinition.id))} ·
+        ${(state.definitionBuildsMeta?.cached ? "cached" : "fresh")} ·
+        ${escapeHtml(String(state.definitionBuildsMeta?.builds?.length ?? state.definitionBuilds.length))} builds ·
+        ${escapeHtml(formatDate(state.definitionBuildsMeta?.lastRefresh))}
+      </div>
+      <div class="filter-row">
+        <button class="filter-chip ${state.buildFilter === "all" ? "is-active" : ""}" data-filter="all">All</button>
+        <button class="filter-chip ${state.buildFilter === "inProgress" ? "is-active" : ""}" data-filter="inProgress">In Progress</button>
+        <button class="filter-chip ${state.buildFilter === "failed" ? "is-active" : ""}" data-filter="failed">Failed / Cancelled</button>
+        <button class="filter-chip ${state.buildFilter === "success" ? "is-active" : ""}" data-filter="success">Success</button>
+      </div>
+      <div id="definition-build-list" class="build-list"></div>
+    `;
+
+    document.getElementById("definition-selector-open").addEventListener("click", () => {
+      void applyDefinitionSelection();
+    });
+    document.getElementById("definition-selector").addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        void applyDefinitionSelection();
+      }
+    });
+    document.getElementById("definition-selector-back").addEventListener("click", () => {
+      history.back();
+    });
+
+    for (const button of elements.detailBody.querySelectorAll("[data-filter]")) {
+      button.addEventListener("click", () => {
+        state.buildFilter = button.getAttribute("data-filter");
+        renderDefinitionBuildsPane();
+      });
+    }
+
+    renderDefinitionBuildList();
+  }
+
+  function renderDefinitionBuildList() {
+    const host = document.getElementById("definition-build-list");
+    const total = state.definitionBuilds.length;
+    const filtered = state.definitionBuilds.filter((build) => matchesBuildFilter(build, state.buildFilter));
+    if (!total) {
+      host.className = "build-list empty-state";
+      host.textContent = `No builds returned for definition #${state.selectedDefinition.id}.`;
+      return;
+    }
     if (!filtered.length) {
-      elements.buildList.classList.add("empty-state");
-      elements.buildList.textContent = "No builds match the selected state filter.";
+      host.className = "build-list empty-state";
+      host.textContent = "Builds were returned, but none match the selected state filter.";
       return;
     }
 
-    elements.buildList.innerHTML = "";
-    for (const build of filtered) {
-      const item = document.createElement("button");
-      item.className = "build-item";
-      item.innerHTML = `
+    host.className = "build-list";
+    host.innerHTML = filtered.map((build) => `
+      <button class="build-item" data-build-id="${build.id}">
         <div class="build-item__top">
           <strong>#${escapeHtml(String(build.id))} · ${escapeHtml(build.buildNumber)}</strong>
           <span class="pill">${escapeHtml(build.result || build.status)}</span>
@@ -233,78 +352,222 @@
           <span>${escapeHtml(build.requestedFor || "Unknown requester")}</span>
           <span>${escapeHtml(formatDate(build.finishTime || build.queueTime))}</span>
         </div>
-      `;
-      item.addEventListener("click", () => {
-        void loadBuild(build.id, false);
+      </button>
+    `).join("");
+
+    for (const button of host.querySelectorAll("[data-build-id]")) {
+      button.addEventListener("click", () => {
+        void openBuild(Number(button.getAttribute("data-build-id")), false);
       });
-      elements.buildList.appendChild(item);
     }
-    elements.mainStatus.textContent = `${projectName} · last 10 builds · ${cached ? "cached" : "fresh"} · ${formatDate(lastRefresh)}`;
   }
 
-  function renderDefinitions(definitions, cached, lastRefresh) {
-    const filtered = definitions.filter((definition) => matchesWildcard(definition.name, state.definitionFilter));
-    const tree = buildDefinitionTree(filtered);
-    elements.buildList.className = "definition-tree";
-    elements.buildList.innerHTML = tree.html || '<div class="empty-state">No definitions match the current filter.</div>';
-    for (const summary of elements.buildList.querySelectorAll("summary")) {
-      summary.addEventListener("click", () => {
-        summary.parentElement.classList.toggle("is-open");
+  async function applyDefinitionSelection() {
+    const raw = document.getElementById("definition-selector").value.trim();
+    const definition = resolveDefinitionReference(raw);
+    if (!definition) {
+      renderBanner("Definition not found. Use an exact id, substring, or wildcard like python*.");
+      return;
+    }
+    renderBanner("");
+    await openDefinition(definition, false);
+  }
+
+  function renderBuildPage() {
+    elements.content.classList.remove("is-split");
+    elements.detailPanel.classList.add("is-hidden");
+    elements.toolbar.className = "toolbar is-hidden";
+    elements.mainTitle.textContent = `#${state.currentBuild.id} · ${state.currentBuild.buildNumber}`;
+    elements.mainStatus.textContent = `${state.currentBuild.definitionName} · ${state.currentBuild.status} / ${state.currentBuild.result}`;
+    elements.buildList.className = "build-page";
+    elements.buildList.innerHTML = `
+      <div class="build-page__topbar">
+        <button id="build-page-back" class="button button--ghost">Back</button>
+        <span class="pill">${escapeHtml(state.currentBuild.cached ? "cache hit" : "fresh fetch")}</span>
+      </div>
+      <details class="build-summary" open>
+        <summary>Build Details</summary>
+        <div class="build-summary__grid">
+          ${detailCard("Definition", state.currentBuild.definitionName)}
+          ${detailCard("Project", state.currentBuild.projectName)}
+          ${detailCard("Status", `${state.currentBuild.status} / ${state.currentBuild.result}`)}
+          ${detailCard("Branch", state.currentBuild.sourceBranch || "n/a")}
+          ${detailCard("Requester", state.currentBuild.requestedFor || "n/a")}
+          ${detailCard("Repository", state.currentBuild.repository || "n/a")}
+          ${detailCard("Reason", state.currentBuild.reason || "n/a")}
+          ${detailCard("Started", formatDate(state.currentBuild.queueTime))}
+        </div>
+      </details>
+      <section class="task-tree-shell">
+        <div class="section-head">
+          <h3>Build Details</h3>
+          <span class="muted">Task hierarchy scaffold from build layout plan</span>
+        </div>
+        <div class="task-tree">
+          <button class="task-row" data-task-name="Overview log">Overview log</button>
+          <button class="task-row" data-task-name="Stage inspection">Stage inspection</button>
+          <button class="task-row" data-task-name="Task output placeholder">Task output placeholder</button>
+        </div>
+      </section>
+    `;
+    document.getElementById("build-page-back").addEventListener("click", () => history.back());
+    for (const button of elements.buildList.querySelectorAll("[data-task-name]")) {
+      button.addEventListener("click", () => {
+        openTaskPane(button.getAttribute("data-task-name"));
       });
     }
-    elements.mainStatus.textContent = `${state.selectedProject} · ${filtered.length} definitions · ${cached ? "cached" : "fresh"} · ${formatDate(lastRefresh)}`;
+  }
+
+  function openTaskPane(taskName) {
+    elements.content.classList.add("is-split");
+    elements.detailPanel.classList.remove("is-hidden");
+    elements.detailTitle.textContent = taskName;
+    elements.detailBody.className = "detail-pane";
+    elements.detailBody.innerHTML = `
+      <div class="task-pane">
+        <p class="eyebrow">Task</p>
+        <h3>${escapeHtml(taskName)}</h3>
+        <div class="banner">Task-level log download and cached output rendering are planned next. This pane is the reserved 50% task detail region from the build layout plan.</div>
+      </div>
+    `;
+  }
+
+  function closeTaskPane() {
+    if (state.currentBuild) {
+      renderBuildPage();
+      return;
+    }
+    history.back();
   }
 
   function renderArtifactsPlaceholder() {
-    elements.toolbar.className = "toolbar is-hidden";
-    elements.buildList.className = "build-list empty-state";
-    elements.buildList.innerHTML = "Artifacts view is planned but not implemented yet.";
-    elements.mainStatus.textContent = `${state.selectedProject} · Artifacts`;
-  }
-
-  function openDetail(build) {
-    elements.content.classList.add("is-split");
-    elements.detailPanel.classList.remove("is-hidden");
-    elements.detailTitle.textContent = `#${build.id} · ${build.buildNumber}`;
-    elements.detailBody.className = "detail-grid";
-    elements.detailBody.innerHTML = [
-      detailCard("Definition", build.definitionName),
-      detailCard("Project", build.projectName),
-      detailCard("Status", `${build.status} / ${build.result}`),
-      detailCard("Branch", build.sourceBranch || "n/a"),
-      detailCard("Requester", build.requestedFor || "n/a"),
-      detailCard("Repository", build.repository || "n/a"),
-      detailCard("Reason", build.reason || "n/a"),
-      detailCard("Queued", formatDate(build.queueTime)),
-      detailCard("Started", formatDate(build.startTime)),
-      detailCard("Finished", formatDate(build.finishTime)),
-      detailCard("Last Refresh", formatDate(build.lastRefresh)),
-      detailCard("Cache", build.cached ? "cache hit" : "fresh fetch")
-    ].join("");
-  }
-
-  function closeDetail() {
     elements.content.classList.remove("is-split");
     elements.detailPanel.classList.add("is-hidden");
-    elements.detailBody.className = "detail-grid empty-state";
-    elements.detailBody.textContent = "Choose a build to inspect.";
+    elements.toolbar.className = "toolbar is-hidden";
+    elements.mainTitle.textContent = state.selectedProject;
+    elements.mainStatus.textContent = `${state.selectedProject} · Artifacts`;
+    elements.buildList.className = "build-list empty-state";
+    elements.buildList.innerHTML = "Artifacts view is planned but not implemented yet.";
   }
 
-  function setTitle(title) {
-    vscode.postMessage({
-      type: "setTitle",
-      title
-    });
+  function commitNavState(next, replaceHistory) {
+    state.navState = next;
+    if (replaceHistory) {
+      history.replaceState(next, "");
+    } else {
+      history.pushState(next, "");
+    }
   }
 
-  function applyTheme(themeId) {
-    elements.themeCss.setAttribute("href", bootstrap.themeUrls[themeId]);
+  function resolveDefinitionReference(raw) {
+    if (!raw) {
+      return null;
+    }
+    const trimmed = String(raw).trim();
+    const numeric = Number(trimmed.split("·")[0].trim());
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return state.definitions.find((definition) => definition.id === numeric) || null;
+    }
+
+    const wildcardMatches = state.definitions.filter((definition) => matchesWildcard(definition.name, trimmed));
+    if (wildcardMatches.length === 1) {
+      return wildcardMatches[0];
+    }
+
+    const substringMatches = state.definitions.filter((definition) => definition.name.toLowerCase().includes(trimmed.toLowerCase()));
+    if (substringMatches.length === 1) {
+      return substringMatches[0];
+    }
+
+    return null;
   }
 
-  function renderBanner(message) {
-    elements.messageBanner.innerHTML = message
-      ? `<div class="banner">${escapeHtml(message)}</div>`
-      : "";
+  function matchesBuildFilter(build, filter) {
+    if (filter === "all") {
+      return true;
+    }
+    if (filter === "inProgress") {
+      return build.status === "inProgress" || build.status === "notStarted" || build.status === "postponed";
+    }
+    if (filter === "failed") {
+      return build.result === "failed" || build.result === "canceled";
+    }
+    return build.result === "succeeded";
+  }
+
+  function buildDefinitionTree(definitions) {
+    const root = createFolderNode();
+    for (const definition of definitions) {
+      const segments = definition.path.split("\\").filter(Boolean);
+      let cursor = root;
+      for (const segment of segments) {
+        if (!cursor.folders[segment]) {
+          cursor.folders[segment] = createFolderNode();
+        }
+        cursor = cursor.folders[segment];
+      }
+      cursor.definitions.push(definition);
+    }
+    return renderFolderNode(root, 0);
+  }
+
+  function renderFolderNode(node, depth) {
+    const folderHtml = Object.entries(node.folders)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([name, folder]) => `
+        <details class="folder-node" ${depth < 1 ? "open" : ""}>
+          <summary>${escapeHtml(name)}</summary>
+          <div class="folder-node__body">
+            ${renderFolderNode(folder, depth + 1)}
+          </div>
+        </details>
+      `)
+      .join("");
+
+    const definitionHtml = node.definitions
+      .sort((left, right) => left.name.localeCompare(right.name))
+      .map((definition) => definitionCard(definition))
+      .join("");
+
+    return `${folderHtml}${definitionHtml}`;
+  }
+
+  function definitionCard(definition) {
+    const selected = state.selectedDefinition?.id === definition.id ? " is-active" : "";
+    return `
+      <button class="definition-item${selected}" data-definition-id="${definition.id}">
+        <div class="definition-item__name">${escapeHtml(definition.name)}</div>
+        <div class="build-meta">
+          <span>#${escapeHtml(String(definition.id))}</span>
+          <span>rev ${escapeHtml(String(definition.revision))}</span>
+          <span>${escapeHtml(definition.queueStatus || "enabled")}</span>
+          <span>${escapeHtml(formatDate(definition.latestBuild?.finishTime))}</span>
+        </div>
+      </button>
+    `;
+  }
+
+  function createFolderNode() {
+    return {
+      folders: {},
+      definitions: []
+    };
+  }
+
+  function matchesWildcard(value, pattern) {
+    if (!pattern) {
+      return true;
+    }
+    const trimmed = pattern.trim();
+    if (!trimmed) {
+      return true;
+    }
+    if (!trimmed.includes("*")) {
+      return value.toLowerCase().includes(trimmed.toLowerCase());
+    }
+    const escaped = trimmed.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+    const regex = new RegExp(`^${escaped}$`, "i");
+    return regex.test(value);
   }
 
   async function apiGet(path) {
@@ -353,77 +616,21 @@
     }
   }
 
-  function matchesBuildFilter(build, filter) {
-    if (filter === "all") {
-      return true;
-    }
-    if (filter === "inProgress") {
-      return build.status === "inProgress" || build.status === "notStarted" || build.status === "postponed";
-    }
-    if (filter === "failed") {
-      return build.result === "failed" || build.result === "canceled";
-    }
-    return build.result === "succeeded";
+  function setTitle(title) {
+    vscode.postMessage({
+      type: "setTitle",
+      title
+    });
   }
 
-  function buildDefinitionTree(definitions) {
-    const root = {};
-    for (const definition of definitions) {
-      const segments = definition.path.split("\\").filter(Boolean);
-      let cursor = root;
-      for (const segment of segments) {
-        cursor[segment] = cursor[segment] || { __folders: {}, __definitions: [] };
-        cursor = cursor[segment].__folders;
-      }
-      cursor.__definitions = cursor.__definitions || [];
-      cursor.__definitions.push(definition);
-    }
-    return {
-      html: renderDefinitionNodes(root, 0)
-    };
+  function applyTheme(themeId) {
+    elements.themeCss.setAttribute("href", bootstrap.themeUrls[themeId]);
   }
 
-  function renderDefinitionNodes(node, depth) {
-    const folders = Object.entries(node)
-      .filter(([key]) => key !== "__definitions")
-      .sort(([left], [right]) => left.localeCompare(right));
-    const definitions = (node.__definitions || []).sort((left, right) => left.name.localeCompare(right.name));
-    let html = "";
-    for (const [name, folder] of folders) {
-      html += `
-        <details class="folder-node" ${depth < 1 ? "open" : ""}>
-          <summary>${escapeHtml(name)}</summary>
-          <div class="folder-node__body">
-            ${renderDefinitionNodes(folder.__folders, depth + 1)}
-            ${(folder.__definitions || []).map((definition) => definitionCard(definition)).join("")}
-          </div>
-        </details>
-      `;
-    }
-    html += definitions.map((definition) => definitionCard(definition)).join("");
-    return html;
-  }
-
-  function definitionCard(definition) {
-    return `
-      <button class="definition-item">
-        <div class="definition-item__name">${escapeHtml(definition.name)}</div>
-        <div class="build-meta">
-          <span>rev ${escapeHtml(String(definition.revision))}</span>
-          <span>${escapeHtml(definition.queueStatus || "enabled")}</span>
-          <span>${escapeHtml(formatDate(definition.latestBuild?.finishTime))}</span>
-        </div>
-      </button>
-    `;
-  }
-
-  function matchesWildcard(value, pattern) {
-    if (!pattern) {
-      return true;
-    }
-    const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
-    const regex = new RegExp(`^${escaped}$`, "i");
-    return regex.test(value);
+  function renderBanner(message) {
+    elements.messageBanner.innerHTML = message
+      ? `<div class="banner">${escapeHtml(message)}</div>`
+      : "";
   }
 
   function detailCard(label, value) {

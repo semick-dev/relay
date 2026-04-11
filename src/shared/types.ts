@@ -36,6 +36,7 @@ export interface RelayProject {
 export interface RelayBuildSummary {
   id: number;
   buildNumber: string;
+  definitionId?: number;
   definitionName: string;
   status: string;
   result: string;

@@ -118,7 +118,8 @@ export class RelayApiServer {
         const project = decodeURIComponent(requestUrl.pathname.split("/")[3] ?? "");
         const orgUrl = requestUrl.searchParams.get("orgUrl") ?? "";
         const refresh = requestUrl.searchParams.get("refresh") === "1";
-        const payload = await this.loadBuilds(orgUrl, project, refresh);
+        const definitionId = Number(requestUrl.searchParams.get("definitionId") ?? "0");
+        const payload = await this.loadBuilds(orgUrl, project, refresh, Number.isFinite(definitionId) && definitionId > 0 ? definitionId : undefined);
         this.sendJson(res, 200, payload);
         return;
       }
@@ -216,7 +217,7 @@ export class RelayApiServer {
     });
   }
 
-  private async loadBuilds(orgUrl: string, project: string, forceRefresh: boolean): Promise<BuildsResponse> {
+  private async loadBuilds(orgUrl: string, project: string, forceRefresh: boolean, definitionId?: number): Promise<BuildsResponse> {
     validateOrgUrl(orgUrl);
     if (!project) {
       throw new Error("Project is required.");
@@ -226,12 +227,15 @@ export class RelayApiServer {
     adoUrl.searchParams.set("$top", "10");
     adoUrl.searchParams.set("queryOrder", "queueTimeDescending");
     adoUrl.searchParams.set("api-version", "7.1-preview.7");
+    if (definitionId) {
+      adoUrl.searchParams.set("definitions", String(definitionId));
+    }
 
     return await this.withCache<RelayBuildSummary[], BuildsResponse>({
       cacheUrl: adoUrl.toString(),
       ttlSeconds: TTL_SECONDS.builds,
       forceRefresh,
-      fetcher: () => this.adoClient.listBuilds(orgUrl, project, 10),
+      fetcher: () => this.adoClient.listBuilds(orgUrl, project, 10, definitionId),
       mapper: (builds, cached, lastRefresh) => ({
         ok: true,
         projectName: project,
