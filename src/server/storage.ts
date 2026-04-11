@@ -27,4 +27,39 @@ export class RelayStorage {
     const target = await this.ensureBuildDir(buildId);
     await fs.writeFile(path.join(target, "timestamp"), `${timestamp}\n`, "utf8");
   }
+
+  async writeBuildJson(buildId: number, fileName: string, value: unknown): Promise<void> {
+    const target = await this.ensureBuildDir(buildId);
+    await fs.writeFile(path.join(target, fileName), JSON.stringify(value, null, 2), "utf8");
+  }
+
+  async readBuildJson<T>(buildId: number, fileName: string): Promise<T | null> {
+    try {
+      const target = await this.ensureBuildDir(buildId);
+      const raw = await fs.readFile(path.join(target, fileName), "utf8");
+      return JSON.parse(raw) as T;
+    } catch {
+      return null;
+    }
+  }
+
+  async writeBuildText(buildId: number, relativePath: string, content: string): Promise<void> {
+    const target = await this.ensureBuildDir(buildId);
+    const filePath = path.join(target, relativePath);
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(filePath, content, "utf8");
+  }
+
+  async readBuildText(buildId: number, relativePath: string): Promise<string | null> {
+    try {
+      const target = await this.ensureBuildDir(buildId);
+      return await fs.readFile(path.join(target, relativePath), "utf8");
+    } catch {
+      return null;
+    }
+  }
+
+  getBuildFilePath(buildId: number, relativePath: string): string {
+    return path.join(this.buildDir, String(buildId), relativePath);
+  }
 }

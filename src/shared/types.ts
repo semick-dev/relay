@@ -55,6 +55,41 @@ export interface RelayBuildDetails extends RelayBuildSummary {
   cached: boolean;
 }
 
+export interface RelayTimelineNode {
+  id: string;
+  parentId?: string;
+  type: string;
+  name: string;
+  order: number;
+  state: string;
+  result: string;
+  startTime?: string;
+  finishTime?: string;
+  logId?: number;
+  logLineCount?: number;
+  children: RelayTimelineNode[];
+}
+
+export interface RelayTimelineResponse {
+  ok: true;
+  buildId: number;
+  cached: boolean;
+  lastRefresh: string;
+  timeline: RelayTimelineNode[];
+}
+
+export interface RelayTaskLogResponse {
+  ok: true;
+  buildId: number;
+  logId: number;
+  cached: boolean;
+  lastRefresh: string;
+  inline: boolean;
+  sizeBytes: number;
+  content?: string;
+  downloadPath?: string;
+}
+
 export interface RelayDefinitionSummary {
   id: number;
   name: string;

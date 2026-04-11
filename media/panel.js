@@ -14,6 +14,9 @@
     definitionBuildsMeta: null,
     buildFilter: "all",
     currentBuild: null,
+    currentTimeline: [],
+    currentTimelineMeta: null,
+    currentTask: null,
     navState: null
   };
 
@@ -120,6 +123,7 @@
   async function openDefinition(definition, replaceHistory) {
     state.selectedDefinition = definition;
     state.currentBuild = null;
+    state.currentTask = null;
     await loadDefinitionBuilds(definition.id, true);
     commitNavState({
       mode: "definitionBuilds",
@@ -141,6 +145,10 @@
     const url = `/api/builds/${buildId}?orgUrl=${encodeURIComponent(state.orgUrl)}&project=${encodeURIComponent(state.selectedProject)}`;
     const response = await apiGet(url);
     state.currentBuild = response.build;
+    state.currentTask = null;
+    const timelineResponse = await apiGet(`/api/builds/${buildId}/timeline?orgUrl=${encodeURIComponent(state.orgUrl)}&project=${encodeURIComponent(state.selectedProject)}`);
+    state.currentTimeline = timelineResponse.timeline;
+    state.currentTimelineMeta = timelineResponse;
     commitNavState({
       mode: "build",
       project: state.selectedProject,
@@ -390,7 +398,7 @@
     elements.toolbar.className = "toolbar is-hidden";
     elements.mainTitle.textContent = `#${state.currentBuild.id} · ${state.currentBuild.buildNumber}`;
     elements.mainStatus.textContent = `${state.currentBuild.definitionName} · ${state.currentBuild.status} / ${state.currentBuild.result}`;
-    setMainCachePill(state.currentBuild.cached, state.currentBuild.lastRefresh, "Refresh build");
+    setMainCachePill(state.currentTimelineMeta?.cached ?? state.currentBuild.cached, state.currentTimelineMeta?.lastRefresh ?? state.currentBuild.lastRefresh, "Refresh build");
     setDetailCachePill(null, null, "No detail cache");
     elements.buildList.className = "build-page";
     elements.buildList.innerHTML = `
@@ -414,24 +422,24 @@
       <section class="task-tree-shell">
         <div class="section-head">
           <h3>Build Details</h3>
-          <span class="muted">Task hierarchy scaffold from build layout plan</span>
+          <span class="muted">${escapeHtml(state.currentTimelineMeta?.cached ? "cached timeline" : "fresh timeline")}</span>
         </div>
-        <div class="task-tree">
-          <button class="task-row" data-task-name="Overview log">Overview log</button>
-          <button class="task-row" data-task-name="Stage inspection">Stage inspection</button>
-          <button class="task-row" data-task-name="Task output placeholder">Task output placeholder</button>
-        </div>
+        <div class="task-tree">${renderTimelineTree(state.currentTimeline)}</div>
       </section>
     `;
     document.getElementById("build-page-back").addEventListener("click", () => history.back());
-    for (const button of elements.buildList.querySelectorAll("[data-task-name]")) {
+    for (const button of elements.buildList.querySelectorAll("[data-task-name][data-log-id]")) {
       button.addEventListener("click", () => {
-        openTaskPane(button.getAttribute("data-task-name"));
+        void openTaskPane(button.getAttribute("data-task-name"), Number(button.getAttribute("data-log-id")));
       });
     }
   }
 
-  function openTaskPane(taskName) {
+  async function openTaskPane(taskName, logId, forceRefresh = false) {
+    state.currentTask = {
+      taskName,
+      logId
+    };
     elements.content.classList.add("is-split");
     elements.detailPanel.classList.remove("is-hidden");
     elements.detailTitle.textContent = taskName;
@@ -440,13 +448,37 @@
       <div class="task-pane">
         <p class="eyebrow">Task</p>
         <h3>${escapeHtml(taskName)}</h3>
-        <div class="banner">Task-level log download and cached output rendering are planned next. This pane is the reserved 50% task detail region from the build layout plan.</div>
+        <div class="banner">Loading task output...</div>
       </div>
     `;
+    const response = await apiGet(`/api/builds/${state.currentBuild.id}/logs/${logId}?orgUrl=${encodeURIComponent(state.orgUrl)}&project=${encodeURIComponent(state.selectedProject)}${forceRefresh ? "&refresh=1" : ""}`);
+    setDetailCachePill(response.cached, response.lastRefresh, "Refresh task output");
+    elements.detailBody.innerHTML = response.inline
+      ? `
+        <div class="task-pane">
+          <p class="eyebrow">Task</p>
+          <h3>${escapeHtml(taskName)}</h3>
+          <div class="definition-builds-meta muted">${response.cached ? "cached" : "fresh"} · ${formatBytes(response.sizeBytes)} · ${escapeHtml(formatDate(response.lastRefresh))}</div>
+          <pre class="task-log">${escapeHtml(response.content || "")}</pre>
+        </div>
+      `
+      : `
+        <div class="task-pane">
+          <p class="eyebrow">Task</p>
+          <h3>${escapeHtml(taskName)}</h3>
+          <div class="definition-builds-meta muted">${response.cached ? "cached" : "fresh"} · ${formatBytes(response.sizeBytes)} · ${escapeHtml(formatDate(response.lastRefresh))}</div>
+          <div class="banner">Task output is larger than 1MB.</div>
+          <div class="detail-card">
+            <p class="eyebrow">Download</p>
+            <code>${escapeHtml(response.downloadPath || "")}</code>
+          </div>
+        </div>
+      `;
   }
 
   function closeTaskPane() {
     if (state.currentBuild) {
+      state.currentTask = null;
       renderBuildPage();
       return;
     }
@@ -465,6 +497,48 @@
     elements.buildList.innerHTML = "Artifacts view is planned but not implemented yet.";
   }
 
+  function renderTimelineTree(nodes, depth = 0) {
+    if (!nodes.length) {
+      return '<div class="empty-state">No timeline records returned for this build.</div>';
+    }
+    return nodes.map((node) => {
+      const type = node.type.toLowerCase();
+      const isTask = type === "task" || type === "job" || type === "phase" || type === "stage";
+      const statusClass = timelineStatusClass(node.result, node.state);
+      const label = `
+        <span class="task-row__dot ${statusClass}"></span>
+        <span class="task-row__label">${escapeHtml(node.name)}</span>
+        <span class="task-row__meta">${escapeHtml(node.type)} · ${escapeHtml(node.result || node.state)}</span>
+      `;
+
+      const row = node.logId
+        ? `<button class="task-row task-row--depth-${Math.min(depth, 4)}" data-task-name="${escapeAttr(node.name)}" data-log-id="${node.logId}">${label}</button>`
+        : `<div class="task-row task-row--depth-${Math.min(depth, 4)} task-row--static">${label}</div>`;
+
+      return `
+        <div class="task-tree-node">
+          ${row}
+          ${node.children.length ? `<div class="task-tree-node__children">${renderTimelineTree(node.children, depth + 1)}</div>` : ""}
+        </div>
+      `;
+    }).join("");
+  }
+
+  function timelineStatusClass(result, state) {
+    const normalizedResult = String(result || "").toLowerCase();
+    const normalizedState = String(state || "").toLowerCase();
+    if (normalizedResult === "succeeded") {
+      return "task-row__dot--success";
+    }
+    if (normalizedResult === "failed" || normalizedResult === "canceled") {
+      return "task-row__dot--failed";
+    }
+    if (normalizedResult === "skipped" || normalizedState === "pending" || normalizedState === "inprogress" || normalizedState === "queued") {
+      return "task-row__dot--neutral";
+    }
+    return "task-row__dot--neutral";
+  }
+
   async function refreshMainPane() {
     if (!state.selectedProject) {
       return;
@@ -478,6 +552,10 @@
   }
 
   async function refreshDetailPane() {
+    if (state.currentTask && state.currentBuild) {
+      await openTaskPane(state.currentTask.taskName, state.currentTask.logId, true);
+      return;
+    }
     if (state.currentBuild) {
       return;
     }
@@ -702,6 +780,16 @@
     }
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+  }
+
+  function formatBytes(value) {
+    if (value < 1024) {
+      return `${value} B`;
+    }
+    if (value < 1024 * 1024) {
+      return `${(value / 1024).toFixed(1)} KB`;
+    }
+    return `${(value / (1024 * 1024)).toFixed(2)} MB`;
   }
 
   function escapeHtml(value) {

@@ -16,6 +16,9 @@ import {
   RelayBuildSummary,
   RelayDefinitionSummary,
   RelayProject,
+  RelayTaskLogResponse,
+  RelayTimelineNode,
+  RelayTimelineResponse,
   SessionResponse,
   TelemetryPayload
 } from "../shared/types";
@@ -154,6 +157,21 @@ export class RelayApiServer {
         const orgUrl = requestUrl.searchParams.get("orgUrl") ?? "";
         const project = requestUrl.searchParams.get("project") ?? "";
         const refresh = requestUrl.searchParams.get("refresh") === "1";
+        const pathParts = requestUrl.pathname.split("/");
+
+        if (pathParts[4] === "timeline") {
+          const payload = await this.loadTimeline(orgUrl, project, buildId, refresh);
+          this.sendJson(res, 200, payload);
+          return;
+        }
+
+        if (pathParts[4] === "logs" && pathParts[5]) {
+          const logId = Number(pathParts[5]);
+          const payload = await this.loadTaskLog(orgUrl, project, buildId, logId, refresh);
+          this.sendJson(res, 200, payload);
+          return;
+        }
+
         const payload = await this.loadBuild(orgUrl, project, buildId, refresh);
         this.sendJson(res, 200, payload);
         return;
@@ -306,6 +324,60 @@ export class RelayApiServer {
     });
   }
 
+  private async loadTimeline(orgUrl: string, project: string, buildId: number, forceRefresh: boolean): Promise<RelayTimelineResponse> {
+    const build = await this.loadBuild(orgUrl, project, buildId, forceRefresh);
+    const completed = isBuildCompleted(build.build);
+    const cachedTimeline = completed && !forceRefresh
+      ? await this.storage.readBuildJson<RelayTimelineNode[]>(buildId, "timeline.json")
+      : null;
+
+    if (cachedTimeline) {
+      return {
+        ok: true,
+        buildId,
+        cached: true,
+        lastRefresh: build.build.lastRefresh,
+        timeline: cachedTimeline
+      };
+    }
+
+    const timeline = await this.adoClient.getTimeline(orgUrl, project, buildId);
+    const timestamp = new Date().toISOString();
+    await this.storage.writeBuildJson(buildId, "timeline.json", timeline);
+    await this.storage.writeBuildTimestamp(buildId, timestamp);
+
+    return {
+      ok: true,
+      buildId,
+      cached: false,
+      lastRefresh: timestamp,
+      timeline
+    };
+  }
+
+  private async loadTaskLog(orgUrl: string, project: string, buildId: number, logId: number, forceRefresh: boolean): Promise<RelayTaskLogResponse> {
+    const build = await this.loadBuild(orgUrl, project, buildId, forceRefresh);
+    const completed = isBuildCompleted(build.build);
+    const relativePath = `logs/${logId}.txt`;
+    const cachedLog = completed && !forceRefresh
+      ? await this.storage.readBuildText(buildId, relativePath)
+      : null;
+
+    if (cachedLog !== null) {
+      const sizeBytes = Buffer.byteLength(cachedLog, "utf8");
+      return this.buildTaskLogResponse(buildId, logId, true, build.build.lastRefresh, cachedLog, relativePath, sizeBytes);
+    }
+
+    const content = await this.adoClient.getLog(orgUrl, project, buildId, logId);
+    const timestamp = new Date().toISOString();
+    await this.storage.writeBuildTimestamp(buildId, timestamp);
+    const sizeBytes = Buffer.byteLength(content, "utf8");
+
+    await this.storage.writeBuildText(buildId, relativePath, content);
+
+    return this.buildTaskLogResponse(buildId, logId, false, timestamp, content, relativePath, sizeBytes);
+  }
+
   private async getDefinitionsStatus(orgUrl: string, project: string): Promise<DefinitionsPrecacheStatusResponse> {
     validateOrgUrl(orgUrl);
     if (!project) {
@@ -441,6 +513,40 @@ export class RelayApiServer {
   private getDefinitionsJobKey(orgUrl: string, project: string): string {
     return `${new URL(orgUrl).origin}|${project}`;
   }
+
+  private buildTaskLogResponse(
+    buildId: number,
+    logId: number,
+    cached: boolean,
+    lastRefresh: string,
+    content: string,
+    relativePath: string,
+    sizeBytes: number
+  ): RelayTaskLogResponse {
+    if (sizeBytes >= 1024 * 1024) {
+      return {
+        ok: true,
+        buildId,
+        logId,
+        cached,
+        lastRefresh,
+        inline: false,
+        sizeBytes,
+        downloadPath: this.storage.getBuildFilePath(buildId, relativePath)
+      };
+    }
+
+    return {
+      ok: true,
+      buildId,
+      logId,
+      cached,
+      lastRefresh,
+      inline: true,
+      sizeBytes,
+      content
+    };
+  }
 }
 
 async function readJsonBody<T>(req: http.IncomingMessage): Promise<T> {
@@ -493,4 +599,8 @@ function mergeDefinitions(previous: RelayDefinitionSummary[], fresh: RelayDefini
     }
     return left.path.localeCompare(right.path);
   });
+}
+
+function isBuildCompleted(build: RelayBuildDetails): boolean {
+  return build.status === "completed" || Boolean(build.finishTime);
 }

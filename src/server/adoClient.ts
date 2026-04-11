@@ -1,4 +1,10 @@
-import { RelayBuildDetails, RelayBuildSummary, RelayDefinitionSummary, RelayProject } from "../shared/types";
+import {
+  RelayBuildDetails,
+  RelayBuildSummary,
+  RelayDefinitionSummary,
+  RelayProject,
+  RelayTimelineNode
+} from "../shared/types";
 
 export class RelayAuthError extends Error {}
 
@@ -95,6 +101,33 @@ export class RelayAdoClient {
       }
       return left.path.localeCompare(right.path);
     });
+  }
+
+  async getTimeline(orgUrl: string, project: string, buildId: number): Promise<RelayTimelineNode[]> {
+    const url = new URL(`${encodeURIComponent(project)}/_apis/build/builds/${buildId}/timeline`, normalizeOrgUrl(orgUrl));
+    url.searchParams.set("api-version", "7.1");
+    const payload = await this.requestJson<AdoTimelineResponse>(url.toString());
+    return mapTimeline(payload.records ?? []);
+  }
+
+  async getLog(orgUrl: string, project: string, buildId: number, logId: number): Promise<string> {
+    const url = new URL(`${encodeURIComponent(project)}/_apis/build/builds/${buildId}/logs/${logId}`, normalizeOrgUrl(orgUrl));
+    url.searchParams.set("api-version", "7.1");
+    this.ensureAuth();
+
+    const auth = Buffer.from(`:${this.token ?? ""}`, "utf8").toString("base64");
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Basic ${auth}`,
+        Accept: "text/plain"
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`ADO log request failed (${response.status}) for ${url}`);
+    }
+
+    return await response.text();
   }
 
   private async requestJson<T>(url: string): Promise<T> {
@@ -201,4 +234,68 @@ interface AdoBuild {
   requestedFor?: {
     displayName?: string;
   };
+}
+
+interface AdoTimelineResponse {
+  records?: AdoTimelineRecord[];
+}
+
+interface AdoTimelineRecord {
+  id: string;
+  parentId?: string;
+  type?: string;
+  name?: string;
+  order?: number;
+  state?: string;
+  result?: string;
+  startTime?: string;
+  finishTime?: string;
+  log?: {
+    id?: number;
+    lineCount?: number;
+  };
+}
+
+function mapTimeline(records: AdoTimelineRecord[]): RelayTimelineNode[] {
+  const byId = new Map<string, RelayTimelineNode>();
+  for (const record of records) {
+    byId.set(record.id, {
+      id: record.id,
+      parentId: record.parentId,
+      type: record.type ?? "Record",
+      name: record.name ?? record.type ?? "Unnamed",
+      order: record.order ?? 0,
+      state: record.state ?? "unknown",
+      result: record.result ?? "unknown",
+      startTime: record.startTime,
+      finishTime: record.finishTime,
+      logId: record.log?.id,
+      logLineCount: record.log?.lineCount,
+      children: []
+    });
+  }
+
+  const roots: RelayTimelineNode[] = [];
+  for (const node of byId.values()) {
+    if (node.parentId && byId.has(node.parentId)) {
+      byId.get(node.parentId)?.children.push(node);
+      continue;
+    }
+    roots.push(node);
+  }
+
+  const sortNodes = (nodes: RelayTimelineNode[]): void => {
+    nodes.sort((left, right) => {
+      if (left.order === right.order) {
+        return left.name.localeCompare(right.name);
+      }
+      return left.order - right.order;
+    });
+    for (const node of nodes) {
+      sortNodes(node.children);
+    }
+  };
+
+  sortNodes(roots);
+  return roots;
 }
