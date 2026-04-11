@@ -118,7 +118,10 @@ export class RelayMainPanel {
           <p class="eyebrow">Project</p>
           <h2 id="main-title">Awaiting project selection</h2>
         </div>
-        <div id="main-status" class="status-copy">Choose a project from the Relay sidebar.</div>
+        <div class="panel__header-actions">
+          <button id="main-cache-pill" class="pill pill--button">Idle</button>
+          <div id="main-status" class="status-copy">Choose a project from the Relay sidebar.</div>
+        </div>
       </div>
       <div id="toolbar" class="toolbar is-hidden"></div>
       <div id="message-banner"></div>
@@ -132,7 +135,10 @@ export class RelayMainPanel {
           <p class="eyebrow">Build</p>
           <h2 id="detail-title">No build selected</h2>
         </div>
-        <button id="close-detail" class="button button--ghost">Close</button>
+        <div class="panel__header-actions">
+          <button id="detail-cache-pill" class="pill pill--button">Idle</button>
+          <button id="close-detail" class="button button--ghost">Close</button>
+        </div>
       </div>
       <div id="detail-body" class="detail-grid empty-state">
         Choose a build to inspect.

@@ -23,9 +23,11 @@
     mainStatus: document.getElementById("main-status"),
     messageBanner: document.getElementById("message-banner"),
     content: document.getElementById("content"),
+    mainCachePill: document.getElementById("main-cache-pill"),
     detailPanel: document.getElementById("detail-panel"),
     detailTitle: document.getElementById("detail-title"),
     detailBody: document.getElementById("detail-body"),
+    detailCachePill: document.getElementById("detail-cache-pill"),
     closeDetail: document.getElementById("close-detail"),
     themeCss: document.getElementById("theme-css"),
     toolbar: document.getElementById("toolbar")
@@ -74,6 +76,12 @@
   function bindEvents() {
     elements.closeDetail.addEventListener("click", () => {
       closeTaskPane();
+    });
+    elements.mainCachePill.addEventListener("click", () => {
+      void refreshMainPane();
+    });
+    elements.detailCachePill.addEventListener("click", () => {
+      void refreshDetailPane();
     });
   }
 
@@ -213,11 +221,13 @@
       : "Definition builds";
     renderDefinitionsToolbar();
     renderDefinitionsTree();
+    setMainCachePill(state.definitionsMeta?.cached, state.definitionsMeta?.lastRefresh, "Refresh definitions");
 
     if (!state.selectedDefinition) {
       elements.detailBody.className = "detail-pane detail-pane--placeholder";
       elements.detailBody.innerHTML = `<div class="empty-state">Choose a definition to load its builds.</div>`;
       elements.mainStatus.textContent = `${state.selectedProject} · ${state.definitions.length} definitions`;
+      setDetailCachePill(null, null, "No detail cache");
       return;
     }
 
@@ -300,6 +310,7 @@
       </div>
       <div id="definition-build-list" class="build-list"></div>
     `;
+    setDetailCachePill(state.definitionBuildsMeta?.cached, state.definitionBuildsMeta?.lastRefresh, "Refresh build list");
 
     document.getElementById("definition-selector-open").addEventListener("click", () => {
       void applyDefinitionSelection();
@@ -379,6 +390,8 @@
     elements.toolbar.className = "toolbar is-hidden";
     elements.mainTitle.textContent = `#${state.currentBuild.id} · ${state.currentBuild.buildNumber}`;
     elements.mainStatus.textContent = `${state.currentBuild.definitionName} · ${state.currentBuild.status} / ${state.currentBuild.result}`;
+    setMainCachePill(state.currentBuild.cached, state.currentBuild.lastRefresh, "Refresh build");
+    setDetailCachePill(null, null, "No detail cache");
     elements.buildList.className = "build-page";
     elements.buildList.innerHTML = `
       <div class="build-page__topbar">
@@ -446,8 +459,33 @@
     elements.toolbar.className = "toolbar is-hidden";
     elements.mainTitle.textContent = state.selectedProject;
     elements.mainStatus.textContent = `${state.selectedProject} · Artifacts`;
+    setMainCachePill(null, null, "No artifact cache");
+    setDetailCachePill(null, null, "No detail cache");
     elements.buildList.className = "build-list empty-state";
     elements.buildList.innerHTML = "Artifacts view is planned but not implemented yet.";
+  }
+
+  async function refreshMainPane() {
+    if (!state.selectedProject) {
+      return;
+    }
+    if (state.currentBuild) {
+      await openBuild(state.currentBuild.id, true);
+      return;
+    }
+    await loadDefinitions(true);
+    renderDefinitionsScreen();
+  }
+
+  async function refreshDetailPane() {
+    if (state.currentBuild) {
+      return;
+    }
+    if (!state.selectedDefinition) {
+      return;
+    }
+    await loadDefinitionBuilds(state.selectedDefinition.id, true);
+    renderDefinitionBuildsPane();
   }
 
   function commitNavState(next, replaceHistory) {
@@ -631,6 +669,27 @@
     elements.messageBanner.innerHTML = message
       ? `<div class="banner">${escapeHtml(message)}</div>`
       : "";
+  }
+
+  function setMainCachePill(cached, lastRefresh, title) {
+    setCachePill(elements.mainCachePill, cached, lastRefresh, title);
+  }
+
+  function setDetailCachePill(cached, lastRefresh, title) {
+    setCachePill(elements.detailCachePill, cached, lastRefresh, title);
+  }
+
+  function setCachePill(element, cached, lastRefresh, title) {
+    element.title = title;
+    if (cached === null || cached === undefined) {
+      element.textContent = "Idle";
+      element.disabled = true;
+      element.classList.add("is-disabled");
+      return;
+    }
+    element.disabled = false;
+    element.classList.remove("is-disabled");
+    element.textContent = `${cached ? "Cached" : "Fresh"} · ${formatDate(lastRefresh)}`;
   }
 
   function detailCard(label, value) {

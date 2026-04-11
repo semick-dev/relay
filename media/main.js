@@ -10,7 +10,6 @@
   const elements = {
     orgUrl: document.getElementById("org-url"),
     connectButton: document.getElementById("connect-button"),
-    refreshButton: document.getElementById("refresh-button"),
     projectList: document.getElementById("project-list"),
     cachePill: document.getElementById("cache-pill"),
     messageBanner: document.getElementById("message-banner"),
@@ -42,7 +41,10 @@
     elements.connectButton.addEventListener("click", () => {
       void loadProjects(true);
     });
-    elements.refreshButton.addEventListener("click", () => {
+    elements.cachePill.addEventListener("click", () => {
+      if (!state.orgUrl) {
+        return;
+      }
       void loadProjects(true);
     });
   }

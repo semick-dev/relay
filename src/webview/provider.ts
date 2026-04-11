@@ -124,7 +124,6 @@ export class RelaySidebarProvider implements vscode.WebviewViewProvider, vscode.
         <label for="org-url">Target ADO URL</label>
         <input id="org-url" type="text" placeholder="https://example.visualstudio.com/" />
         <button id="connect-button" class="button button--primary">Load Projects</button>
-        <button id="refresh-button" class="button button--ghost">Refresh Visible Data</button>
       </div>
 
       <div class="sidebar__group sidebar__group--projects">
