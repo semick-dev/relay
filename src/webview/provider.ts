@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 
-import { RelayBootstrap, RelayPersistedState, ThemeId } from "../shared/types";
+import { RelayBootstrap, RelayPersistedState, RelaySubview, ThemeId } from "../shared/types";
 
 const STATE_KEY = "relay.uiState";
 
@@ -16,7 +16,7 @@ export class RelaySidebarProvider implements vscode.WebviewViewProvider, vscode.
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly apiBase: string,
-    private readonly onOpenProject: (project: string) => void,
+    private readonly onOpenProject: (project: string, view: RelaySubview) => void,
     private readonly onThemeChange: (theme: ThemeId) => void
   ) {}
 
@@ -45,7 +45,13 @@ export class RelaySidebarProvider implements vscode.WebviewViewProvider, vscode.
       return;
     }
 
-    const typed = message as { type?: string; state?: Partial<RelayPersistedState>; project?: string; themeId?: ThemeId };
+    const typed = message as {
+      type?: string;
+      state?: Partial<RelayPersistedState>;
+      project?: string;
+      themeId?: ThemeId;
+      view?: RelaySubview;
+    };
     if (typed.type === "persistState" && typed.state) {
       const current = this.getState();
       const next: RelayPersistedState = {
@@ -56,8 +62,13 @@ export class RelaySidebarProvider implements vscode.WebviewViewProvider, vscode.
       return;
     }
 
-    if (typed.type === "openProject" && typeof typed.project === "string" && typed.project) {
-      this.onOpenProject(typed.project);
+    if (
+      typed.type === "openProject" &&
+      typeof typed.project === "string" &&
+      typed.project &&
+      isSubview(typed.view)
+    ) {
+      this.onOpenProject(typed.project, typed.view);
       return;
     }
 
@@ -162,4 +173,8 @@ function createNonce(): string {
 
 function isThemeId(value: unknown): value is ThemeId {
   return value === "neon" || value === "nightwave" || value === "ember";
+}
+
+function isSubview(value: unknown): value is RelaySubview {
+  return value === "definitions" || value === "builds" || value === "artifacts";
 }

@@ -7,11 +7,14 @@ import { RelayTelemetrySink } from "./telemetry";
 import {
   BuildResponse,
   BuildsResponse,
+  DefinitionsPrecacheStatusResponse,
+  DefinitionsResponse,
   ErrorResponse,
   ProjectsResponse,
   RefreshRequest,
   RelayBuildDetails,
   RelayBuildSummary,
+  RelayDefinitionSummary,
   RelayProject,
   SessionResponse,
   TelemetryPayload
@@ -20,12 +23,22 @@ import {
 const TTL_SECONDS = {
   projects: 3600,
   builds: 60,
-  build: 300
+  build: 300,
+  definitions: 900
 } as const;
+
+interface DefinitionsJob {
+  running: boolean;
+  loadedCount: number;
+  totalCount: number;
+  lastRefresh?: string;
+  error?: string;
+}
 
 export class RelayApiServer {
   private server: http.Server;
   private port = 0;
+  private readonly definitionJobs = new Map<string, DefinitionsJob>();
 
   constructor(
     private readonly adoClient: RelayAdoClient,
@@ -107,6 +120,31 @@ export class RelayApiServer {
         const refresh = requestUrl.searchParams.get("refresh") === "1";
         const payload = await this.loadBuilds(orgUrl, project, refresh);
         this.sendJson(res, 200, payload);
+        return;
+      }
+
+      if (method === "GET" && requestUrl.pathname.startsWith("/api/projects/") && requestUrl.pathname.endsWith("/definitions")) {
+        const project = decodeURIComponent(requestUrl.pathname.split("/")[3] ?? "");
+        const orgUrl = requestUrl.searchParams.get("orgUrl") ?? "";
+        const refresh = requestUrl.searchParams.get("refresh") === "1";
+        const payload = await this.loadDefinitions(orgUrl, project, refresh);
+        this.sendJson(res, 200, payload);
+        return;
+      }
+
+      if (method === "GET" && requestUrl.pathname.startsWith("/api/projects/") && requestUrl.pathname.endsWith("/definitions/status")) {
+        const project = decodeURIComponent(requestUrl.pathname.split("/")[3] ?? "");
+        const orgUrl = requestUrl.searchParams.get("orgUrl") ?? "";
+        const payload = await this.getDefinitionsStatus(orgUrl, project);
+        this.sendJson(res, 200, payload);
+        return;
+      }
+
+      if (method === "POST" && requestUrl.pathname.startsWith("/api/projects/") && requestUrl.pathname.endsWith("/definitions/precache")) {
+        const project = decodeURIComponent(requestUrl.pathname.split("/")[3] ?? "");
+        const body = await readJsonBody<{ orgUrl?: string; limitedRefresh?: boolean }>(req);
+        const payload = await this.startDefinitionsPrecache(body.orgUrl ?? "", project, body.limitedRefresh !== false);
+        this.sendJson(res, 202, payload);
         return;
       }
 
@@ -238,12 +276,120 @@ export class RelayApiServer {
     return response;
   }
 
-  private async refresh(body: RefreshRequest): Promise<ProjectsResponse | BuildsResponse | BuildResponse> {
+  private async loadDefinitions(orgUrl: string, project: string, forceRefresh: boolean): Promise<DefinitionsResponse> {
+    validateOrgUrl(orgUrl);
+    if (!project) {
+      throw new Error("Project is required.");
+    }
+
+    const adoUrl = new URL(`${encodeURIComponent(project)}/_apis/build/definitions`, orgUrl);
+    adoUrl.searchParams.set("api-version", "7.1");
+    adoUrl.searchParams.set("includeLatestBuilds", "true");
+
+    return await this.withCache<RelayDefinitionSummary[], DefinitionsResponse>({
+      cacheUrl: adoUrl.toString(),
+      ttlSeconds: TTL_SECONDS.definitions,
+      forceRefresh,
+      fetcher: async () => await this.adoClient.listDefinitions(orgUrl, project),
+      mapper: (definitions, cached, lastRefresh) => ({
+        ok: true,
+        projectName: project,
+        definitions,
+        cached,
+        lastRefresh
+      }),
+      eventName: "relay.definitions.load"
+    });
+  }
+
+  private async getDefinitionsStatus(orgUrl: string, project: string): Promise<DefinitionsPrecacheStatusResponse> {
+    validateOrgUrl(orgUrl);
+    if (!project) {
+      throw new Error("Project is required.");
+    }
+
+    const jobKey = this.getDefinitionsJobKey(orgUrl, project);
+    const job = this.definitionJobs.get(jobKey);
+    return {
+      ok: true,
+      projectName: project,
+      running: job?.running ?? false,
+      loadedCount: job?.loadedCount ?? 0,
+      totalCount: job?.totalCount ?? 0,
+      lastRefresh: job?.lastRefresh,
+      error: job?.error
+    };
+  }
+
+  private async startDefinitionsPrecache(orgUrl: string, project: string, limitedRefresh: boolean): Promise<DefinitionsPrecacheStatusResponse> {
+    validateOrgUrl(orgUrl);
+    if (!project) {
+      throw new Error("Project is required.");
+    }
+
+    const jobKey = this.getDefinitionsJobKey(orgUrl, project);
+    const existing = this.definitionJobs.get(jobKey);
+    if (existing?.running) {
+      return await this.getDefinitionsStatus(orgUrl, project);
+    }
+
+    const job: DefinitionsJob = {
+      running: true,
+      loadedCount: 0,
+      totalCount: 100
+    };
+    this.definitionJobs.set(jobKey, job);
+
+    void (async () => {
+      try {
+        const adoUrl = new URL(`${encodeURIComponent(project)}/_apis/build/definitions`, orgUrl);
+        adoUrl.searchParams.set("api-version", "7.1");
+        adoUrl.searchParams.set("includeLatestBuilds", "true");
+
+        const previous = limitedRefresh
+          ? await this.cacheStore.readJson<RelayDefinitionSummary[]>("GET", adoUrl.toString())
+          : null;
+        const fresh = await this.adoClient.listDefinitions(orgUrl, project, async (loadedCount, totalCount) => {
+          job.loadedCount = loadedCount;
+          job.totalCount = totalCount;
+          await this.telemetry.log("relay.definitions.precache.progress", "info", {
+            project,
+            loadedCount,
+            totalCount
+          });
+        });
+
+        const merged = previous
+          ? mergeDefinitions(previous.body, fresh)
+          : fresh;
+        const written = await this.cacheStore.writeJson("GET", adoUrl.toString(), TTL_SECONDS.definitions, merged);
+        job.lastRefresh = written.lastRefresh;
+        job.loadedCount = merged.length;
+        job.totalCount = merged.length;
+        job.running = false;
+        job.error = undefined;
+      } catch (error) {
+        job.running = false;
+        job.error = error instanceof Error ? error.message : String(error);
+        await this.telemetry.log("relay.definitions.precache.error", "error", {
+          project,
+          message: job.error
+        });
+      }
+    })();
+
+    return await this.getDefinitionsStatus(orgUrl, project);
+  }
+
+  private async refresh(body: RefreshRequest): Promise<ProjectsResponse | BuildsResponse | BuildResponse | DefinitionsResponse> {
     if (body.resource === "projects") {
       return await this.loadProjects(body.orgUrl, true);
     }
     if (body.resource === "builds") {
       return await this.loadBuilds(body.orgUrl, body.project ?? "", true);
+    }
+    if (body.resource === "definitions") {
+      return await this.loadDefinitions(body.orgUrl, body.project ?? "", true);
     }
     return await this.loadBuild(body.orgUrl, body.project ?? "", Number(body.buildId), true);
   }
@@ -287,6 +433,10 @@ export class RelayApiServer {
     });
     res.end(JSON.stringify(body));
   }
+
+  private getDefinitionsJobKey(orgUrl: string, project: string): string {
+    return `${new URL(orgUrl).origin}|${project}`;
+  }
 }
 
 async function readJsonBody<T>(req: http.IncomingMessage): Promise<T> {
@@ -323,4 +473,20 @@ function validateOrgUrl(value: string): void {
   if (parsed.protocol !== "https:") {
     throw new Error("Organization URL must use https.");
   }
+}
+
+function mergeDefinitions(previous: RelayDefinitionSummary[], fresh: RelayDefinitionSummary[]): RelayDefinitionSummary[] {
+  const byId = new Map<number, RelayDefinitionSummary>();
+  for (const definition of previous) {
+    byId.set(definition.id, definition);
+  }
+  for (const definition of fresh) {
+    byId.set(definition.id, definition);
+  }
+  return [...byId.values()].sort((left, right) => {
+    if (left.path === right.path) {
+      return left.name.localeCompare(right.name);
+    }
+    return left.path.localeCompare(right.path);
+  });
 }

@@ -69,20 +69,30 @@
 
     elements.projectList.innerHTML = "";
     for (const project of projects) {
-      const button = document.createElement("button");
-      button.className = "project-item";
-      button.innerHTML = `
-        <strong>${escapeHtml(project.name)}</strong>
-        <div class="muted">${escapeHtml(project.description || project.state || "Project")}</div>
+      const card = document.createElement("div");
+      card.className = "project-group";
+      card.innerHTML = `
+        <div class="project-group__title">
+          <strong>${escapeHtml(project.name)}</strong>
+        </div>
+        <div class="project-group__meta muted">${escapeHtml(project.description || project.state || "Project")}</div>
+        <div class="project-subnav">
+          <button class="project-subnav__item" data-view="definitions">Definitions</button>
+          <button class="project-subnav__item is-active" data-view="builds">Builds</button>
+          <button class="project-subnav__item" data-view="artifacts">Artifacts</button>
+        </div>
       `;
-      button.addEventListener("click", () => {
-        highlightProject(button);
-        vscode.postMessage({
-          type: "openProject",
-          project: project.name
+      for (const subview of card.querySelectorAll("[data-view]")) {
+        subview.addEventListener("click", () => {
+          highlightProject(card, subview.getAttribute("data-view"));
+          vscode.postMessage({
+            type: "openProject",
+            project: project.name,
+            view: subview.getAttribute("data-view")
+          });
         });
-      });
-      elements.projectList.appendChild(button);
+      }
+      elements.projectList.appendChild(card);
     }
   }
 
@@ -165,11 +175,18 @@
       : "";
   }
 
-  function highlightProject(activeButton) {
-    for (const element of elements.projectList.querySelectorAll(".project-item")) {
+  function highlightProject(activeCard, view) {
+    for (const element of elements.projectList.querySelectorAll(".project-group")) {
       element.classList.remove("is-active");
+      for (const subview of element.querySelectorAll(".project-subnav__item")) {
+        subview.classList.remove("is-active");
+      }
     }
-    activeButton.classList.add("is-active");
+    activeCard.classList.add("is-active");
+    const target = activeCard.querySelector(`[data-view="${view}"]`);
+    if (target) {
+      target.classList.add("is-active");
+    }
   }
 
   function formatDate(value) {

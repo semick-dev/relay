@@ -17,6 +17,7 @@ export interface RelayBootstrap {
 
 export interface RelayPanelBootstrap extends RelayBootstrap {
   initialProject?: string;
+  initialView?: RelaySubview;
 }
 
 export interface SessionResponse {
@@ -53,6 +54,20 @@ export interface RelayBuildDetails extends RelayBuildSummary {
   cached: boolean;
 }
 
+export interface RelayDefinitionSummary {
+  id: number;
+  name: string;
+  path: string;
+  revision: number;
+  queueStatus?: string;
+  latestBuild?: {
+    id?: number;
+    status?: string;
+    result?: string;
+    finishTime?: string;
+  };
+}
+
 export interface ProjectsResponse {
   ok: true;
   projects: RelayProject[];
@@ -73,6 +88,24 @@ export interface BuildResponse {
   build: RelayBuildDetails;
 }
 
+export interface DefinitionsResponse {
+  ok: true;
+  projectName: string;
+  definitions: RelayDefinitionSummary[];
+  cached: boolean;
+  lastRefresh: string;
+}
+
+export interface DefinitionsPrecacheStatusResponse {
+  ok: true;
+  projectName: string;
+  running: boolean;
+  loadedCount: number;
+  totalCount: number;
+  lastRefresh?: string;
+  error?: string;
+}
+
 export interface ErrorResponse {
   ok: false;
   error: string;
@@ -80,7 +113,7 @@ export interface ErrorResponse {
 }
 
 export interface RefreshRequest {
-  resource: "projects" | "builds" | "build";
+  resource: "projects" | "builds" | "build" | "definitions";
   orgUrl: string;
   project?: string;
   buildId?: number;
@@ -95,3 +128,5 @@ export interface TelemetryPayload {
   level?: "debug" | "info" | "warn" | "error";
   attributes?: Record<string, unknown>;
 }
+
+export type RelaySubview = "definitions" | "builds" | "artifacts";

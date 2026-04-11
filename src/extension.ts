@@ -30,7 +30,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const provider = new RelaySidebarProvider(
     context,
     apiBase,
-    (project) => mainPanel.open(project),
+    (project, view) => mainPanel.open(project, view),
     (themeId) => mainPanel.postTheme(themeId)
   );
 

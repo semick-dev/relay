@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 
-import { RelayPanelBootstrap, RelayPersistedState, ThemeId } from "../shared/types";
+import { RelayPanelBootstrap, RelayPersistedState, RelaySubview, ThemeId } from "../shared/types";
 
 const STATE_KEY = "relay.uiState";
 
@@ -12,12 +12,13 @@ export class RelayMainPanel {
     private readonly apiBase: string
   ) {}
 
-  open(project?: string): void {
+  open(project?: string, view: RelaySubview = "builds"): void {
     if (this.panel) {
       this.panel.reveal(vscode.ViewColumn.One, false);
       this.panel.webview.postMessage({
         type: "openProject",
-        project
+        project,
+        view
       });
       return;
     }
@@ -41,7 +42,7 @@ export class RelayMainPanel {
       void this.handleMessage(message);
     });
 
-    this.panel.webview.html = this.renderHtml(this.panel.webview, project);
+    this.panel.webview.html = this.renderHtml(this.panel.webview, project, view);
   }
 
   postTheme(themeId: ThemeId): void {
@@ -72,7 +73,7 @@ export class RelayMainPanel {
     }
   }
 
-  private renderHtml(webview: vscode.Webview, initialProject?: string): string {
+  private renderHtml(webview: vscode.Webview, initialProject?: string, initialView: RelaySubview = "builds"): string {
     const nonce = createNonce();
     const state = this.getState();
     const bootstrap: RelayPanelBootstrap = {
@@ -85,7 +86,8 @@ export class RelayMainPanel {
         nightwave: webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "media", "theme-nightwave.css")).toString(),
         ember: webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "media", "theme-ember.css")).toString()
       },
-      initialProject
+      initialProject,
+      initialView
     };
     const baseCss = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "media", "base.css"));
     const initialTheme = bootstrap.themeUrls[state.activeTheme];
@@ -118,6 +120,7 @@ export class RelayMainPanel {
         </div>
         <div id="main-status" class="status-copy">Choose a project from the Relay sidebar.</div>
       </div>
+      <div id="toolbar" class="toolbar is-hidden"></div>
       <div id="message-banner"></div>
       <div id="build-list" class="build-list empty-state">
         No project selected.

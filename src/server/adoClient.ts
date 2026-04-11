@@ -1,4 +1,4 @@
-import { RelayBuildDetails, RelayBuildSummary, RelayProject } from "../shared/types";
+import { RelayBuildDetails, RelayBuildSummary, RelayDefinitionSummary, RelayProject } from "../shared/types";
 
 export class RelayAuthError extends Error {}
 
@@ -46,7 +46,60 @@ export class RelayAdoClient {
     };
   }
 
+  async listDefinitions(
+    orgUrl: string,
+    project: string,
+    onProgress?: (loadedCount: number, totalCount: number) => Promise<void> | void
+  ): Promise<RelayDefinitionSummary[]> {
+    const definitions: RelayDefinitionSummary[] = [];
+    let continuationToken: string | undefined;
+
+    do {
+      const url = new URL(`${encodeURIComponent(project)}/_apis/build/definitions`, normalizeOrgUrl(orgUrl));
+      url.searchParams.set("api-version", "7.1");
+      url.searchParams.set("includeLatestBuilds", "true");
+      url.searchParams.set("$top", "100");
+      if (continuationToken) {
+        url.searchParams.set("continuationToken", continuationToken);
+      }
+
+      const response = await this.request<AdoDefinitionsResponse>(url.toString());
+      definitions.push(...response.body.value.map((definition) => ({
+        id: definition.id,
+        name: definition.name,
+        path: definition.path || "\\",
+        revision: definition.revision ?? 0,
+        queueStatus: definition.queueStatus,
+        latestBuild: definition.latestBuild ? {
+          id: definition.latestBuild.id,
+          status: definition.latestBuild.status,
+          result: definition.latestBuild.result,
+          finishTime: definition.latestBuild.finishTime
+        } : undefined
+      })));
+
+      continuationToken = response.continuationToken;
+      if (onProgress) {
+        const loadedCount = definitions.length;
+        const totalCount = continuationToken ? loadedCount + 100 : loadedCount;
+        await onProgress(loadedCount, totalCount);
+      }
+    } while (continuationToken);
+
+    return definitions.sort((left, right) => {
+      if (left.path === right.path) {
+        return left.name.localeCompare(right.name);
+      }
+      return left.path.localeCompare(right.path);
+    });
+  }
+
   private async requestJson<T>(url: string): Promise<T> {
+    const response = await this.request<T>(url);
+    return response.body;
+  }
+
+  private async request<T>(url: string): Promise<{ body: T; continuationToken?: string }> {
     this.ensureAuth();
 
     const auth = Buffer.from(`:${this.token ?? ""}`, "utf8").toString("base64");
@@ -61,7 +114,11 @@ export class RelayAdoClient {
       throw new Error(`ADO request failed (${response.status}) for ${url}`);
     }
 
-    return await response.json() as T;
+    const continuationToken = response.headers.get("x-ms-continuationtoken") ?? undefined;
+    return {
+      body: await response.json() as T,
+      continuationToken
+    };
   }
 }
 
@@ -99,6 +156,22 @@ interface AdoProjectsResponse {
 
 interface AdoBuildsResponse {
   value: AdoBuild[];
+}
+
+interface AdoDefinitionsResponse {
+  value: Array<{
+    id: number;
+    name: string;
+    path?: string;
+    revision?: number;
+    queueStatus?: string;
+    latestBuild?: {
+      id?: number;
+      status?: string;
+      result?: string;
+      finishTime?: string;
+    };
+  }>;
 }
 
 interface AdoBuild {
