@@ -540,6 +540,11 @@ input:focus {
   font-size: 0.85rem;
 }
 
+.button-row {
+  display: flex;
+  gap: 12px;
+}
+
 .detail-pane,
 .task-pane {
   display: grid;

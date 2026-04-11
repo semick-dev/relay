@@ -524,11 +524,23 @@
           <div class="definition-builds-meta muted">${response.cached ? "cached" : "fresh"} · ${formatBytes(response.sizeBytes)} · ${escapeHtml(formatDate(response.lastRefresh))}</div>
           <div class="banner">Task output is larger than 1MB.</div>
           <div class="detail-card">
-            <p class="eyebrow">Download</p>
+            <p class="eyebrow">Local Path</p>
             <code>${escapeHtml(response.downloadPath || "")}</code>
+          </div>
+          <div class="button-row">
+            <button id="task-show-log-button" class="button button--primary">Show Log</button>
           </div>
         </div>
       `;
+    const showButton = document.getElementById("task-show-log-button");
+    if (showButton && response.downloadPath) {
+      showButton.addEventListener("click", () => {
+        vscode.postMessage({
+          type: "openLogFile",
+          path: response.downloadPath
+        });
+      });
+    }
   }
 
   async function loadArtifacts(forceRefresh) {

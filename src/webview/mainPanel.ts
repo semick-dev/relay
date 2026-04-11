@@ -58,7 +58,7 @@ export class RelayMainPanel {
       return;
     }
 
-    const typed = message as { type?: string; state?: Partial<RelayPersistedState>; title?: string };
+    const typed = message as { type?: string; state?: Partial<RelayPersistedState>; title?: string; path?: string };
     if (typed.type === "persistState" && typed.state) {
       const current = this.getState();
       const next: RelayPersistedState = {
@@ -84,6 +84,15 @@ export class RelayMainPanel {
       this.panel.webview.postMessage({
         type: "folderChosen",
         folder: selection?.[0]?.fsPath ?? ""
+      });
+      return;
+    }
+
+    if (typed.type === "openLogFile" && typeof typed.path === "string" && typed.path) {
+      const document = await vscode.workspace.openTextDocument(typed.path);
+      await vscode.window.showTextDocument(document, {
+        preview: false,
+        viewColumn: vscode.ViewColumn.Beside
       });
     }
   }
