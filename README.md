@@ -1,6 +1,6 @@
 # relay
 
-A cache-heavy, debugging forward re-implementation of the ADO interface
+A cache-heavy local UI for fast interaction with ADO projects.
 
 ## Current shape
 
@@ -28,4 +28,3 @@ npm run build
 ```
 
 Then open the repo in VS Code and run the extension in an Extension Development Host.
-
