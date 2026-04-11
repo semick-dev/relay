@@ -69,6 +69,16 @@ export class RelayStorage {
     }
   }
 
+  async hasBuildFile(buildId: number, relativePath: string): Promise<boolean> {
+    try {
+      const target = await this.ensureBuildDir(buildId);
+      await fs.stat(path.join(target, relativePath));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   getBuildFilePath(buildId: number, relativePath: string): string {
     return path.join(this.buildDir, String(buildId), relativePath);
   }

@@ -20,6 +20,7 @@
     currentArtifacts: [],
     currentArtifactsMeta: null,
     artifactTargetFolder: "",
+    artifactNotice: "",
     navState: null
   };
 
@@ -156,6 +157,7 @@
     state.currentBuild = response.build;
     state.currentTask = null;
     state.currentArtifacts = [];
+    state.artifactNotice = "";
     const timelineResponse = await apiGet(`/api/builds/${buildId}/timeline?orgUrl=${encodeURIComponent(state.orgUrl)}&project=${encodeURIComponent(state.selectedProject)}`);
     state.currentTimeline = timelineResponse.timeline;
     state.currentTimelineMeta = timelineResponse;
@@ -446,15 +448,20 @@
     });
     for (const button of elements.buildList.querySelectorAll("[data-task-name][data-log-id]")) {
       button.addEventListener("click", () => {
-        void openTaskPane(button.getAttribute("data-task-name"), Number(button.getAttribute("data-log-id")));
+        void openTaskPane(
+          button.getAttribute("data-task-name"),
+          Number(button.getAttribute("data-log-id")),
+          Number(button.getAttribute("data-log-lines") || "0")
+        );
       });
     }
   }
 
-  async function openTaskPane(taskName, logId, forceRefresh = false) {
+  async function openTaskPane(taskName, logId, logLineCount = 0, forceRefresh = false) {
     state.currentTask = {
       taskName,
-      logId
+      logId,
+      logLineCount
     };
     elements.content.classList.add("is-split");
     elements.detailPanel.classList.remove("is-hidden");
@@ -467,6 +474,35 @@
         <div class="banner">Loading task output...</div>
       </div>
     `;
+    const info = await apiGet(`/api/builds/${state.currentBuild.id}/logs/${logId}/meta?orgUrl=${encodeURIComponent(state.orgUrl)}&project=${encodeURIComponent(state.selectedProject)}`);
+    if (info.shouldDelayDownload && !forceRefresh) {
+      setDetailCachePill(info.cached, info.lastRefresh, "Refresh task output");
+      elements.detailBody.innerHTML = `
+        <div class="task-pane">
+          <p class="eyebrow">Task</p>
+          <h3>${escapeHtml(taskName)}</h3>
+          <div class="definition-builds-meta muted">${info.cached ? "cached" : "not downloaded"} · ${escapeHtml(String(info.lineCount || logLineCount || 0))} lines</div>
+          <div class="banner">This task log is large, so Relay will only download it when you ask.</div>
+          <button id="task-download-button" class="button button--primary">Download Task Output</button>
+          <div id="task-download-progress" class="progress-wrap is-hidden">
+            <div class="progress-meta">
+              <span>Downloading task output</span>
+              <span id="task-download-label">Starting</span>
+            </div>
+            <div class="progress-bar"><div id="task-download-bar" class="progress-bar__fill progress-bar__fill--indeterminate"></div></div>
+          </div>
+        </div>
+      `;
+      document.getElementById("task-download-button").addEventListener("click", async () => {
+        const progress = document.getElementById("task-download-progress");
+        const label = document.getElementById("task-download-label");
+        progress.classList.remove("is-hidden");
+        label.textContent = "Downloading";
+        await openTaskPane(taskName, logId, logLineCount, true);
+      });
+      return;
+    }
+
     const response = await apiGet(`/api/builds/${state.currentBuild.id}/logs/${logId}?orgUrl=${encodeURIComponent(state.orgUrl)}&project=${encodeURIComponent(state.selectedProject)}${forceRefresh ? "&refresh=1" : ""}`);
     setDetailCachePill(response.cached, response.lastRefresh, "Refresh task output");
     elements.detailBody.innerHTML = response.inline
@@ -518,6 +554,7 @@
         ${escapeHtml(String(state.currentArtifacts.length))} artifacts ·
         ${escapeHtml(formatDate(state.currentArtifactsMeta?.lastRefresh))}
       </div>
+      ${state.artifactNotice ? `<div class="banner banner--success">${escapeHtml(state.artifactNotice)}</div>` : ""}
       <div id="artifact-list" class="artifact-list"></div>
     `;
     document.getElementById("artifact-folder").addEventListener("input", (event) => {
@@ -560,14 +597,16 @@
 
   async function downloadArtifact(artifactName) {
     if (!state.artifactTargetFolder) {
-      renderBanner("Choose a target folder before downloading an artifact.");
+      state.artifactNotice = "Choose a target folder before downloading an artifact.";
+      openArtifactsPane();
       return;
     }
     const response = await apiPost(`/api/builds/${state.currentBuild.id}/artifacts/download?orgUrl=${encodeURIComponent(state.orgUrl)}&project=${encodeURIComponent(state.selectedProject)}`, {
       artifactName,
       targetFolder: state.artifactTargetFolder
     });
-    renderBanner(`Downloaded ${artifactName} to ${response.savedPath}`);
+    state.artifactNotice = `Downloaded ${artifactName} to ${response.savedPath}`;
+    openArtifactsPane();
   }
 
   function closeTaskPane() {
@@ -608,7 +647,7 @@
       `;
 
       const row = node.logId
-        ? `<button class="task-row" data-task-name="${escapeAttr(node.name)}" data-log-id="${node.logId}">${label}</button>`
+        ? `<button class="task-row" data-task-name="${escapeAttr(node.name)}" data-log-id="${node.logId}" data-log-lines="${node.logLineCount || 0}">${label}</button>`
         : `<div class="task-row task-row--static">${label}</div>`;
 
       return `
@@ -677,7 +716,7 @@
       return;
     }
     if (state.currentTask && state.currentBuild) {
-      await openTaskPane(state.currentTask.taskName, state.currentTask.logId, true);
+      await openTaskPane(state.currentTask.taskName, state.currentTask.logId, state.currentTask.logLineCount, true);
       return;
     }
     if (state.currentBuild) {

@@ -90,6 +90,16 @@ export interface RelayTaskLogResponse {
   downloadPath?: string;
 }
 
+export interface RelayTaskLogInfoResponse {
+  ok: true;
+  buildId: number;
+  logId: number;
+  cached: boolean;
+  lastRefresh?: string;
+  lineCount?: number;
+  shouldDelayDownload: boolean;
+}
+
 export interface RelayArtifactSummary {
   id?: number;
   name: string;

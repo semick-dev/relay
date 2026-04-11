@@ -248,6 +248,10 @@ input:focus {
   display: none;
 }
 
+.is-hidden {
+  display: none;
+}
+
 .filter-row {
   display: flex;
   gap: 10px;
@@ -290,6 +294,11 @@ input:focus {
   border-radius: 999px;
   background: linear-gradient(135deg, var(--accent-0), var(--accent-1));
   transition: width 180ms ease;
+}
+
+.progress-bar__fill--indeterminate {
+  width: 42%;
+  animation: relay-indeterminate 1.2s ease-in-out infinite;
 }
 
 .content.is-split {
@@ -388,6 +397,11 @@ input:focus {
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-1);
   background: var(--banner-bg);
+}
+
+.banner--success {
+  border-color: rgba(52, 211, 153, 0.35);
+  background: rgba(52, 211, 153, 0.08);
 }
 
 .detail-grid {
@@ -640,6 +654,18 @@ input:focus {
 
 .artifact-item__name {
   font-weight: 600;
+}
+
+@keyframes relay-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(70%);
+  }
+  100% {
+    transform: translateX(180%);
+  }
 }
 
 .theme-picker {

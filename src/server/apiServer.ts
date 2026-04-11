@@ -19,6 +19,7 @@ import {
   RelayBuildSummary,
   RelayDefinitionSummary,
   RelayProject,
+  RelayTaskLogInfoResponse,
   RelayTaskLogResponse,
   RelayTimelineNode,
   RelayTimelineResponse,
@@ -176,6 +177,11 @@ export class RelayApiServer {
 
         if (pathParts[4] === "logs" && pathParts[5]) {
           const logId = Number(pathParts[5]);
+          if (pathParts[6] === "meta") {
+            const payload = await this.getTaskLogInfo(orgUrl, project, buildId, logId, refresh);
+            this.sendJson(res, 200, payload);
+            return;
+          }
           const payload = await this.loadTaskLog(orgUrl, project, buildId, logId, refresh);
           this.sendJson(res, 200, payload);
           return;
@@ -401,6 +407,27 @@ export class RelayApiServer {
     await this.storage.writeBuildText(buildId, relativePath, content);
 
     return this.buildTaskLogResponse(buildId, logId, false, timestamp, content, relativePath, sizeBytes);
+  }
+
+  private async getTaskLogInfo(orgUrl: string, project: string, buildId: number, logId: number, forceRefresh: boolean): Promise<RelayTaskLogInfoResponse> {
+    const build = await this.loadBuild(orgUrl, project, buildId, forceRefresh);
+    const completed = isBuildCompleted(build.build);
+    const relativePath = `logs/${logId}.txt`;
+    const cached = completed ? await this.storage.hasBuildFile(buildId, relativePath) : false;
+    const timeline = await this.loadTimeline(orgUrl, project, buildId, false);
+    const record = findTimelineNodeByLogId(timeline.timeline, logId);
+    const lastRefresh = await this.storage.readBuildTimestamp(buildId) ?? build.build.lastRefresh;
+    const lineCount = record?.logLineCount;
+
+    return {
+      ok: true,
+      buildId,
+      logId,
+      cached,
+      lastRefresh,
+      lineCount,
+      shouldDelayDownload: !cached && estimateLargeLog(lineCount)
+    };
   }
 
   private async loadArtifacts(orgUrl: string, project: string, buildId: number, forceRefresh: boolean): Promise<RelayArtifactsResponse> {
@@ -684,4 +711,24 @@ function mergeDefinitions(previous: RelayDefinitionSummary[], fresh: RelayDefini
 
 function isBuildCompleted(build: RelayBuildDetails): boolean {
   return build.status === "completed" || Boolean(build.finishTime);
+}
+
+function findTimelineNodeByLogId(nodes: RelayTimelineNode[], logId: number): RelayTimelineNode | null {
+  for (const node of nodes) {
+    if (node.logId === logId) {
+      return node;
+    }
+    const nested = findTimelineNodeByLogId(node.children, logId);
+    if (nested) {
+      return nested;
+    }
+  }
+  return null;
+}
+
+function estimateLargeLog(lineCount?: number): boolean {
+  if (!lineCount) {
+    return false;
+  }
+  return lineCount >= 8000;
 }
