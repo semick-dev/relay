@@ -3,14 +3,39 @@
   "displayName": "Relay",
   "description": "A cache-heavy, debugging-forward re-implementation of the ADO build UI.",
   "version": "0.0.1",
-  "publisher": "semick",
+  "publisher": "semick-dev",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/semick-dev/relay.git"
+  },
+  "homepage": "https://github.com/semick-dev/relay",
+  "bugs": {
+    "url": "https://github.com/semick-dev/relay/issues"
+  },
+  "files": [
+    "out/**",
+    "media/**",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "package.json"
+  ],
   "engines": {
     "vscode": "^1.100.0"
   },
   "categories": [
     "Other"
   ],
+  "keywords": [
+    "azure-devops",
+    "ado",
+    "build",
+    "logs",
+    "debugging",
+    "webview"
+  ],
+  "icon": "media/icon.png",
   "activationEvents": [
     "onView:relay.sidebar"
   ],
@@ -43,7 +68,10 @@
   },
   "scripts": {
     "build": "tsc -p .",
-    "watch": "tsc -w -p ."
+    "watch": "tsc -w -p .",
+    "vscode:prepublish": "npm run build",
+    "marketplace:package": "npx @vscode/vsce package",
+    "marketplace:publish": "npx @vscode/vsce publish"
   },
   "devDependencies": {
     "@types/node": "^22.15.17",

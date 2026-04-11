@@ -500,7 +500,7 @@
       </div>
     `;
     const info = await apiGet(`/api/builds/${state.currentBuild.id}/logs/${logId}/meta?orgUrl=${encodeURIComponent(state.orgUrl)}&project=${encodeURIComponent(state.selectedProject)}`);
-    if (info.isLarge && !forceRefresh) {
+    if (info.shouldDelayDownload && !forceRefresh) {
       setDetailCachePill(info.cached, info.lastRefresh, "Refresh task output");
       elements.detailBody.innerHTML = `
         <div class="task-pane">

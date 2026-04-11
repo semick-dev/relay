@@ -4,7 +4,9 @@
 
   const state = {
     orgUrl: bootstrap.savedState.orgUrl || "",
-    activeTheme: bootstrap.savedState.activeTheme || "githubdark"
+    activeTheme: bootstrap.savedState.activeTheme || "githubdark",
+    authConfigured: true,
+    loadingProjects: false
   };
 
   const elements = {
@@ -28,10 +30,7 @@
     applyTheme(state.activeTheme);
     await emit("relay.ui.sidebar.boot", { activeTheme: state.activeTheme }, "span");
     const session = await apiGet("/api/session");
-    if (!session.authConfigured) {
-      renderBanner(session.message);
-      return;
-    }
+    setAuthState(session.authConfigured, session.message);
     if (state.orgUrl) {
       await loadProjects(false);
     }
@@ -39,28 +38,37 @@
 
   function bindEvents() {
     elements.connectButton.addEventListener("click", () => {
-      void loadProjects(true);
+      void loadProjects(true).catch(handleLoadError);
     });
     elements.cachePill.addEventListener("click", () => {
-      if (!state.orgUrl) {
+      if (!state.orgUrl || !state.authConfigured || state.loadingProjects) {
         return;
       }
-      void loadProjects(true);
+      void loadProjects(true).catch(handleLoadError);
     });
   }
 
   async function loadProjects(forceRefresh) {
+    if (!state.authConfigured || state.loadingProjects) {
+      return;
+    }
+
     state.orgUrl = elements.orgUrl.value.trim();
     persistState();
     renderBanner("");
-    const url = `/api/org/projects?orgUrl=${encodeURIComponent(state.orgUrl)}${forceRefresh ? "&refresh=1" : ""}`;
-    const response = await apiGet(url);
-    renderProjects(response.projects);
-    setCachePill(response.cached, response.lastRefresh);
-    await emit("relay.ui.sidebar.projects.loaded", {
-      count: response.projects.length,
-      cached: response.cached
-    }, "span");
+    setLoadingState(true);
+    try {
+      const url = `/api/org/projects?orgUrl=${encodeURIComponent(state.orgUrl)}${forceRefresh ? "&refresh=1" : ""}`;
+      const response = await apiGet(url);
+      renderProjects(response.projects);
+      setCachePill(response.cached, response.lastRefresh);
+      await emit("relay.ui.sidebar.projects.loaded", {
+        count: response.projects.length,
+        cached: response.cached
+      }, "span");
+    } finally {
+      setLoadingState(false);
+    }
   }
 
   function renderProjects(projects) {
@@ -175,6 +183,36 @@
     elements.messageBanner.innerHTML = message
       ? `<div class="banner">${escapeHtml(message)}</div>`
       : "";
+  }
+
+  function setAuthState(authConfigured, message) {
+    state.authConfigured = authConfigured;
+    elements.connectButton.disabled = !authConfigured;
+    elements.orgUrl.disabled = !authConfigured;
+
+    if (!authConfigured) {
+      elements.cachePill.textContent = "Auth Required";
+      elements.projectList.innerHTML = '<div class="empty-state empty-state--compact">Set `ADO_TOKEN` and restart VS Code to load projects.</div>';
+      renderBanner(message || "ADO_TOKEN is not set. Restart VS Code with ADO_TOKEN in the environment.");
+      return;
+    }
+
+    elements.cachePill.textContent = "Idle";
+  }
+
+  function setLoadingState(isLoading) {
+    state.loadingProjects = isLoading;
+    elements.connectButton.disabled = isLoading || !state.authConfigured;
+    elements.connectButton.textContent = isLoading ? "Loading..." : "Load Projects";
+  }
+
+  function handleLoadError(error) {
+    const message = error?.message || String(error);
+    if (/ADO_TOKEN/i.test(message)) {
+      setAuthState(false, message);
+      return;
+    }
+    renderBanner(message);
   }
 
   function highlightProject(activeCard, view) {

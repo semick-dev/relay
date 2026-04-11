@@ -145,17 +145,33 @@ export class RelayAdoClient {
       }
     });
 
-    if (!response.ok) {
+    if (response.ok) {
+      const length = response.headers.get("content-length");
+      const parsed = parseSizeHeader(length);
+      if (parsed !== undefined) {
+        return parsed;
+      }
+    }
+
+    const ranged = await fetch(url, {
+      headers: {
+        Authorization: `Basic ${auth}`,
+        Accept: "text/plain",
+        Range: "bytes=0-0"
+      }
+    });
+
+    if (!ranged.ok) {
       return undefined;
     }
 
-    const length = response.headers.get("content-length");
-    if (!length) {
-      return undefined;
+    const contentRange = ranged.headers.get("content-range");
+    const fromRange = parseContentRangeSize(contentRange);
+    if (fromRange !== undefined) {
+      return fromRange;
     }
 
-    const parsed = Number(length);
-    return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+    return parseSizeHeader(ranged.headers.get("content-length"));
   }
 
   async getBuildChanges(orgUrl: string, project: string, buildId: number): Promise<string | undefined> {
@@ -227,6 +243,25 @@ function normalizeOrgUrl(value: string): string {
     parsed.pathname = `${parsed.pathname}/`;
   }
   return parsed.toString();
+}
+
+function parseSizeHeader(value: string | null): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+function parseContentRangeSize(value: string | null): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const match = /\/(\d+)$/.exec(value);
+  if (!match) {
+    return undefined;
+  }
+  return parseSizeHeader(match[1] ?? null);
 }
 
 function mapBuildSummary(build: AdoBuild): RelayBuildSummary {

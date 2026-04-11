@@ -46,6 +46,7 @@ export class RelayApiServer {
   private server: http.Server;
   private port = 0;
   private readonly definitionJobs = new Map<string, DefinitionsJob>();
+  private readonly taskLogLoads = new Map<string, Promise<RelayTaskLogResponse>>();
 
   constructor(
     private readonly adoClient: RelayAdoClient,
@@ -405,14 +406,29 @@ export class RelayApiServer {
       return this.buildTaskLogResponse(buildId, logId, true, localTimestamp ?? build.build.lastRefresh, cachedLog, relativePath, sizeBytes);
     }
 
-    const content = await this.adoClient.getLog(orgUrl, project, buildId, logId);
-    const timestamp = new Date().toISOString();
-    await this.storage.writeBuildTimestamp(buildId, timestamp);
-    const sizeBytes = Buffer.byteLength(content, "utf8");
+    const taskLogKey = this.getTaskLogKey(buildId, logId);
+    const inFlight = this.taskLogLoads.get(taskLogKey);
+    if (inFlight) {
+      return await inFlight;
+    }
 
-    await this.storage.writeBuildText(buildId, relativePath, content);
+    const loadPromise = (async () => {
+      const content = await this.adoClient.getLog(orgUrl, project, buildId, logId);
+      const timestamp = new Date().toISOString();
+      await this.storage.writeBuildTimestamp(buildId, timestamp);
+      const sizeBytes = Buffer.byteLength(content, "utf8");
 
-    return this.buildTaskLogResponse(buildId, logId, false, timestamp, content, relativePath, sizeBytes);
+      await this.storage.writeBuildText(buildId, relativePath, content);
+
+      return this.buildTaskLogResponse(buildId, logId, false, timestamp, content, relativePath, sizeBytes);
+    })();
+
+    this.taskLogLoads.set(taskLogKey, loadPromise);
+    try {
+      return await loadPromise;
+    } finally {
+      this.taskLogLoads.delete(taskLogKey);
+    }
   }
 
   private async getTaskLogInfo(orgUrl: string, project: string, buildId: number, logId: number, forceRefresh: boolean): Promise<RelayTaskLogInfoResponse> {
@@ -645,6 +661,10 @@ export class RelayApiServer {
 
   private getDefinitionsJobKey(orgUrl: string, project: string): string {
     return `${new URL(orgUrl).origin}|${project}`;
+  }
+
+  private getTaskLogKey(buildId: number, logId: number): string {
+    return `${buildId}:${logId}`;
   }
 
   private buildTaskLogResponse(
