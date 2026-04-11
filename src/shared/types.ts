@@ -105,6 +105,7 @@ export interface RelayArtifactSummary {
   name: string;
   resourceType?: string;
   downloadUrl?: string;
+  downloadedPath?: string;
 }
 
 export interface RelayArtifactsResponse {

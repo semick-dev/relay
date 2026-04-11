@@ -554,7 +554,7 @@
         ${escapeHtml(String(state.currentArtifacts.length))} artifacts ·
         ${escapeHtml(formatDate(state.currentArtifactsMeta?.lastRefresh))}
       </div>
-      ${state.artifactNotice ? `<div class="banner banner--success">${escapeHtml(state.artifactNotice)}</div>` : ""}
+      ${state.artifactNotice ? `<div class="banner">${escapeHtml(state.artifactNotice)}</div>` : ""}
       <div id="artifact-list" class="artifact-list"></div>
     `;
     document.getElementById("artifact-folder").addEventListener("input", (event) => {
@@ -582,10 +582,12 @@
         <div>
           <div class="artifact-item__name">${escapeHtml(artifact.name)}</div>
           <div class="build-meta">
-            <span>${escapeHtml(artifact.resourceType || "artifact")}</span>
+            <span>${escapeHtml(artifact.downloadedPath || artifact.resourceType || "artifact")}</span>
           </div>
         </div>
-        <button class="button button--primary" data-artifact-name="${escapeAttr(artifact.name)}">Download</button>
+        ${artifact.downloadedPath
+          ? `<div class="artifact-item__downloaded" title="Downloaded">✓</div>`
+          : `<button class="button button--primary" data-artifact-name="${escapeAttr(artifact.name)}">Download</button>`}
       </div>
     `).join("");
     for (const button of host.querySelectorAll("[data-artifact-name]")) {
@@ -601,12 +603,12 @@
       openArtifactsPane();
       return;
     }
+    state.artifactNotice = "";
     const response = await apiPost(`/api/builds/${state.currentBuild.id}/artifacts/download?orgUrl=${encodeURIComponent(state.orgUrl)}&project=${encodeURIComponent(state.selectedProject)}`, {
       artifactName,
       targetFolder: state.artifactTargetFolder
     });
-    state.artifactNotice = `Downloaded ${artifactName} to ${response.savedPath}`;
-    openArtifactsPane();
+    await loadArtifacts(true);
   }
 
   function closeTaskPane() {

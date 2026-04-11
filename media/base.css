@@ -656,6 +656,20 @@ input:focus {
   font-weight: 600;
 }
 
+.artifact-item__downloaded {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  background: rgba(52, 211, 153, 0.12);
+  color: #34d399;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
 @keyframes relay-indeterminate {
   0% {
     transform: translateX(-100%);

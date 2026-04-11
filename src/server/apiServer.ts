@@ -433,6 +433,11 @@ export class RelayApiServer {
   private async loadArtifacts(orgUrl: string, project: string, buildId: number, forceRefresh: boolean): Promise<RelayArtifactsResponse> {
     const build = await this.loadBuild(orgUrl, project, buildId, forceRefresh);
     const completed = isBuildCompleted(build.build);
+    const rawDownloadState = await this.storage.readBuildJson<Record<string, string>>(buildId, "artifacts-downloads.json") ?? {};
+    const downloadState = await this.filterExistingArtifactDownloads(rawDownloadState);
+    if (Object.keys(downloadState).length !== Object.keys(rawDownloadState).length) {
+      await this.storage.writeBuildJson(buildId, "artifacts-downloads.json", downloadState);
+    }
     const cachedArtifacts = completed && !forceRefresh
       ? await this.storage.readBuildJson<RelayArtifactSummary[]>(buildId, "artifacts.json")
       : null;
@@ -444,7 +449,7 @@ export class RelayApiServer {
         buildId,
         cached: true,
         lastRefresh: timestamp,
-        artifacts: cachedArtifacts
+        artifacts: applyArtifactDownloadState(cachedArtifacts, downloadState)
       };
     }
 
@@ -457,7 +462,7 @@ export class RelayApiServer {
       buildId,
       cached: false,
       lastRefresh: refreshed,
-      artifacts
+      artifacts: applyArtifactDownloadState(artifacts, downloadState)
     };
   }
 
@@ -477,6 +482,9 @@ export class RelayApiServer {
     const extension = artifact.resourceType === "FilePath" ? "" : ".zip";
     const savedPath = `${targetFolder}/${safeName}${extension}`;
     await this.storage.writeFileBytes(savedPath, bytes);
+    const downloadState = await this.storage.readBuildJson<Record<string, string>>(buildId, "artifacts-downloads.json") ?? {};
+    downloadState[artifactName] = savedPath;
+    await this.storage.writeBuildJson(buildId, "artifacts-downloads.json", downloadState);
 
     return {
       ok: true,
@@ -655,6 +663,16 @@ export class RelayApiServer {
       content
     };
   }
+
+  private async filterExistingArtifactDownloads(downloadState: Record<string, string>): Promise<Record<string, string>> {
+    const entries = await Promise.all(
+      Object.entries(downloadState).map(async ([artifactName, savedPath]) => (
+        await this.storage.pathExists(savedPath) ? [artifactName, savedPath] : null
+      ))
+    );
+
+    return Object.fromEntries(entries.filter((entry): entry is [string, string] => entry !== null));
+  }
 }
 
 async function readJsonBody<T>(req: http.IncomingMessage): Promise<T> {
@@ -711,6 +729,16 @@ function mergeDefinitions(previous: RelayDefinitionSummary[], fresh: RelayDefini
 
 function isBuildCompleted(build: RelayBuildDetails): boolean {
   return build.status === "completed" || Boolean(build.finishTime);
+}
+
+function applyArtifactDownloadState(
+  artifacts: RelayArtifactSummary[],
+  downloadState: Record<string, string>
+): RelayArtifactSummary[] {
+  return artifacts.map((artifact) => ({
+    ...artifact,
+    downloadedPath: downloadState[artifact.name]
+  }));
 }
 
 function findTimelineNodeByLogId(nodes: RelayTimelineNode[], logId: number): RelayTimelineNode | null {
