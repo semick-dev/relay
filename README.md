@@ -4,11 +4,10 @@ An Azure DevOps interface that allows easy access to build artifacts and task de
 
 ## Demo
 
-![Azure DevOps Relay interface](media/relay_example.jpg)
+<img width="1600" height="625" alt="Azure DevOps Relay interface" src="https://github.com/user-attachments/assets/cd05138a-7346-4ebc-aa85-079115e7c1e1" />
 
-Video Link:
+[Video Link:](https://github.com/user-attachments/assets/6ae4ba7d-af43-40e9-b1f7-e1ae80c4af1a)
 
-https://github.com/user-attachments/assets/6ae4ba7d-af43-40e9-b1f7-e1ae80c4af1a
 
 ## What It Does
 
