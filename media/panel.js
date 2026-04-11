@@ -27,8 +27,10 @@
 
   const elements = {
     buildList: document.getElementById("build-list"),
+    mainPanel: document.getElementById("main-panel"),
     mainTitle: document.getElementById("main-title"),
     mainStatus: document.getElementById("main-status"),
+    mainStatusCorner: document.getElementById("main-status-corner"),
     messageBanner: document.getElementById("message-banner"),
     content: document.getElementById("content"),
     mainCachePill: document.getElementById("main-cache-pill"),
@@ -240,6 +242,7 @@
   }
 
   function renderDefinitionsScreen() {
+    clearBuildPageChrome();
     elements.content.classList.toggle("is-split", Boolean(state.selectedDefinition));
     elements.detailPanel.classList.toggle("is-hidden", !state.selectedDefinition);
     elements.mainTitle.textContent = state.selectedProject;
@@ -413,6 +416,8 @@
     elements.content.classList.remove("is-split");
     elements.detailPanel.classList.add("is-hidden");
     elements.toolbar.className = "toolbar is-hidden";
+    elements.mainPanel.classList.add("is-build-page");
+    elements.mainStatusCorner.className = `panel-corner ${buildStatusClass(state.currentBuild)}`;
     elements.mainTitle.textContent = `#${state.currentBuild.id} · ${state.currentBuild.buildNumber}`;
     elements.mainStatus.textContent = `${state.currentBuild.definitionName} · ${state.currentBuild.status} / ${state.currentBuild.result}`;
     setMainCachePill(state.currentTimelineMeta?.cached ?? state.currentBuild.cached, state.currentTimelineMeta?.lastRefresh ?? state.currentBuild.lastRefresh, "Refresh build");
@@ -459,6 +464,12 @@
         );
       });
     }
+  }
+
+  function clearBuildPageChrome() {
+    elements.mainPanel.classList.remove("is-build-page");
+    elements.mainStatusCorner.className = "panel-corner is-hidden";
+    elements.detailKind.textContent = "Build";
   }
 
   async function openTaskPane(taskName, logId, logLineCount = 0, forceRefresh = false) {
@@ -567,9 +578,9 @@
   }
 
   function openArtifactsPane() {
+    clearBuildPageChrome();
     elements.content.classList.add("is-split");
     elements.detailPanel.classList.remove("is-hidden");
-    elements.detailKind.textContent = "Build";
     elements.detailTitle.textContent = "Artifacts";
     setDetailCachePill(state.currentArtifactsMeta?.cached, state.currentArtifactsMeta?.lastRefresh, "Refresh artifacts");
     elements.detailBody.className = "detail-pane";
@@ -663,6 +674,7 @@
   }
 
   function renderArtifactsPlaceholder() {
+    clearBuildPageChrome();
     elements.content.classList.remove("is-split");
     elements.detailPanel.classList.add("is-hidden");
     elements.toolbar.className = "toolbar is-hidden";

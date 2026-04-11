@@ -137,7 +137,8 @@ export class RelayMainPanel {
 </head>
 <body class="relay-panel">
   <main class="content content--main panel-shell" id="content">
-    <section class="panel panel--main">
+    <section id="main-panel" class="panel panel--main">
+      <span id="main-status-corner" class="panel-corner is-hidden" aria-hidden="true"></span>
       <div class="panel__header">
         <div>
           <p class="eyebrow">Project</p>
