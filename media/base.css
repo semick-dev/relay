@@ -317,6 +317,7 @@ input:focus {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 
 .panel--detail.is-hidden {
@@ -367,6 +368,8 @@ input:focus {
   font-size: 0.76rem;
   border: 1px solid var(--border-1);
   background: var(--pill-bg);
+  white-space: nowrap;
+  flex: 0 1 auto;
 }
 
 .pill--button {
@@ -502,39 +505,50 @@ input:focus {
 .task-tree-shell {
   display: grid;
   gap: 14px;
+  min-width: 0;
 }
 
 .task-tree {
   display: grid;
-  gap: 10px;
+  gap: 4px;
+  min-width: 0;
 }
 
 .task-tree-node {
   display: grid;
-  gap: 8px;
+  gap: 2px;
+  min-width: 0;
 }
 
 .task-tree-node__children {
   display: grid;
-  gap: 8px;
+  gap: 2px;
+  min-width: 0;
 }
 
 .task-row {
   width: 100%;
   text-align: left;
-  padding: 14px 16px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-0);
-  background: var(--card-bg);
+  padding: 3px 0;
+  border-radius: 0;
+  border: 0;
+  background: transparent;
   color: var(--fg-0);
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  box-shadow: none;
 }
 
-.task-row:hover,
+.task-row:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
 .definition-item.is-active {
+  background: transparent;
   border-color: var(--accent-0);
   background: var(--card-bg-active);
 }
@@ -543,27 +557,12 @@ input:focus {
   cursor: default;
 }
 
-.task-row--depth-1 {
-  margin-left: 18px;
-}
-
-.task-row--depth-2 {
-  margin-left: 36px;
-}
-
-.task-row--depth-3 {
-  margin-left: 54px;
-}
-
-.task-row--depth-4 {
-  margin-left: 72px;
-}
-
 .task-row__dot {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border-radius: 999px;
   flex: 0 0 auto;
+  margin-top: 4px;
 }
 
 .task-row__dot--success {
@@ -579,13 +578,25 @@ input:focus {
 }
 
 .task-row__label {
-  font-weight: 600;
+  font-weight: 500;
   flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .task-row__meta {
   color: var(--fg-2);
-  font-size: 0.82rem;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.task-row__ascii {
+  color: var(--fg-2);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  white-space: pre;
 }
 
 .task-log {

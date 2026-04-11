@@ -28,6 +28,16 @@ export class RelayStorage {
     await fs.writeFile(path.join(target, "timestamp"), `${timestamp}\n`, "utf8");
   }
 
+  async readBuildTimestamp(buildId: number): Promise<string | null> {
+    try {
+      const target = await this.ensureBuildDir(buildId);
+      const raw = await fs.readFile(path.join(target, "timestamp"), "utf8");
+      return raw.trim() || null;
+    } catch {
+      return null;
+    }
+  }
+
   async writeBuildJson(buildId: number, fileName: string, value: unknown): Promise<void> {
     const target = await this.ensureBuildDir(buildId);
     await fs.writeFile(path.join(target, fileName), JSON.stringify(value, null, 2), "utf8");

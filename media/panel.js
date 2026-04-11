@@ -497,28 +497,30 @@
     elements.buildList.innerHTML = "Artifacts view is planned but not implemented yet.";
   }
 
-  function renderTimelineTree(nodes, depth = 0) {
+  function renderTimelineTree(nodes, depth = 0, lineage = []) {
     if (!nodes.length) {
       return '<div class="empty-state">No timeline records returned for this build.</div>';
     }
-    return nodes.map((node) => {
+    return nodes.map((node, index) => {
       const type = node.type.toLowerCase();
-      const isTask = type === "task" || type === "job" || type === "phase" || type === "stage";
       const statusClass = timelineStatusClass(node.result, node.state);
+      const statusLabel = compactTimelineStatus(node.result, node.state);
+      const connector = `${lineage.join("")}${index === nodes.length - 1 ? "└─" : "├─"}`;
       const label = `
+        <span class="task-row__ascii">${escapeHtml(connector)}</span>
         <span class="task-row__dot ${statusClass}"></span>
         <span class="task-row__label">${escapeHtml(node.name)}</span>
-        <span class="task-row__meta">${escapeHtml(node.type)} · ${escapeHtml(node.result || node.state)}</span>
+        <span class="task-row__meta">${escapeHtml(node.type)} · ${escapeHtml(statusLabel)}</span>
       `;
 
       const row = node.logId
-        ? `<button class="task-row task-row--depth-${Math.min(depth, 4)}" data-task-name="${escapeAttr(node.name)}" data-log-id="${node.logId}">${label}</button>`
-        : `<div class="task-row task-row--depth-${Math.min(depth, 4)} task-row--static">${label}</div>`;
+        ? `<button class="task-row" data-task-name="${escapeAttr(node.name)}" data-log-id="${node.logId}">${label}</button>`
+        : `<div class="task-row task-row--static">${label}</div>`;
 
       return `
         <div class="task-tree-node">
           ${row}
-          ${node.children.length ? `<div class="task-tree-node__children">${renderTimelineTree(node.children, depth + 1)}</div>` : ""}
+          ${node.children.length ? `<div class="task-tree-node__children">${renderTimelineTree(node.children, depth + 1, [...lineage, index === nodes.length - 1 ? "  " : "│ "])}</div>` : ""}
         </div>
       `;
     }).join("");
@@ -537,6 +539,30 @@
       return "task-row__dot--neutral";
     }
     return "task-row__dot--neutral";
+  }
+
+  function compactTimelineStatus(result, state) {
+    const normalizedResult = String(result || "").toLowerCase();
+    const normalizedState = String(state || "").toLowerCase();
+    if (normalizedResult === "succeeded") {
+      return "ok";
+    }
+    if (normalizedResult === "failed") {
+      return "fail";
+    }
+    if (normalizedResult === "canceled") {
+      return "cancel";
+    }
+    if (normalizedResult === "skipped") {
+      return "skip";
+    }
+    if (normalizedState === "inprogress") {
+      return "run";
+    }
+    if (normalizedState === "pending") {
+      return "wait";
+    }
+    return normalizedResult || normalizedState || "n/a";
   }
 
   async function refreshMainPane() {
@@ -750,24 +776,25 @@
   }
 
   function setMainCachePill(cached, lastRefresh, title) {
-    setCachePill(elements.mainCachePill, cached, lastRefresh, title);
+    setCachePill(elements.mainCachePill, cached, lastRefresh, title, "");
   }
 
   function setDetailCachePill(cached, lastRefresh, title) {
-    setCachePill(elements.detailCachePill, cached, lastRefresh, title);
+    setCachePill(elements.detailCachePill, cached, lastRefresh, title, "Task");
   }
 
-  function setCachePill(element, cached, lastRefresh, title) {
+  function setCachePill(element, cached, lastRefresh, title, prefix) {
     element.title = title;
     if (cached === null || cached === undefined) {
-      element.textContent = "Idle";
+      element.textContent = prefix ? `${prefix} · Idle` : "Idle";
       element.disabled = true;
       element.classList.add("is-disabled");
       return;
     }
     element.disabled = false;
     element.classList.remove("is-disabled");
-    element.textContent = `${cached ? "Cached" : "Fresh"} · ${formatDate(lastRefresh)}`;
+    const label = `${cached ? "Cached" : "Fresh"} · ${formatDate(lastRefresh)}`;
+    element.textContent = prefix ? `${prefix} · ${label}` : label;
   }
 
   function detailCard(label, value) {
