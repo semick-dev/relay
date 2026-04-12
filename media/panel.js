@@ -185,13 +185,19 @@
   }
 
   async function openBuild(buildId, replaceHistory) {
+    const summaryBuild = state.definitionBuilds.find((build) => build.id === buildId) || null;
     const requestId = state.currentBuildRequestId + 1;
     state.currentBuildRequestId = requestId;
     state.currentBuildLoading = true;
     state.currentBuild = {
       id: buildId,
-      buildNumber: `#${buildId}`,
-      definitionName: state.selectedDefinition?.name || "Build",
+      buildNumber: summaryBuild?.buildNumber || `#${buildId}`,
+      definitionName: summaryBuild?.definitionName || state.selectedDefinition?.name || "Build",
+      commitMessage: summaryBuild?.commitMessage,
+      sourceBranch: summaryBuild?.sourceBranch,
+      requestedFor: summaryBuild?.requestedFor,
+      queueTime: summaryBuild?.queueTime,
+      finishTime: summaryBuild?.finishTime,
       projectName: state.selectedProject,
       status: "loading",
       result: "loading",
@@ -216,7 +222,14 @@
       if (state.currentBuildRequestId !== requestId) {
         return;
       }
-      state.currentBuild = response.build;
+      state.currentBuild = {
+        ...response.build,
+        commitMessage: response.build.commitMessage || summaryBuild?.commitMessage,
+        sourceBranch: response.build.sourceBranch || summaryBuild?.sourceBranch,
+        requestedFor: response.build.requestedFor || summaryBuild?.requestedFor,
+        queueTime: response.build.queueTime || summaryBuild?.queueTime,
+        finishTime: response.build.finishTime || summaryBuild?.finishTime
+      };
       const timelineResponse = await apiGet(`/api/builds/${buildId}/timeline?orgUrl=${encodeURIComponent(state.orgUrl)}&project=${encodeURIComponent(state.selectedProject)}`);
       if (state.currentBuildRequestId !== requestId) {
         return;
@@ -459,7 +472,7 @@
         <div class="build-item__top">
           <strong>#${escapeHtml(String(build.id))} · ${escapeHtml(build.buildNumber)} · ${escapeHtml(build.definitionName)}</strong>
         </div>
-        <div class="build-item__title">${escapeHtml(truncateCommitMessage(build.commitMessage))}</div>
+        <div class="build-item__title"${buildCommitMessageTitle(build.commitMessage, 30)}>${escapeHtml(truncateCommitMessage(build.commitMessage, 30))}</div>
         <div class="build-meta">
           <span>${escapeHtml(build.sourceBranch || "No branch")}</span>
           <span>${escapeHtml(build.requestedFor || "Unknown requester")}</span>
@@ -514,6 +527,7 @@
         <div class="build-page__topbar">
           <button id="build-page-back" class="button button--ghost">Back</button>
         </div>
+        <div class="build-page__subtitle muted"${buildCommitMessageTitle(state.currentBuild.commitMessage, 70)}>${escapeHtml(truncateCommitMessage(state.currentBuild.commitMessage, 70))}</div>
         <div class="detail-pane detail-pane--loading">
           <div class="loading-state">
             <span class="spinner loading-state__spinner"></span>
@@ -528,11 +542,12 @@
       <div class="build-page__topbar">
         <button id="build-page-back" class="button button--ghost">Back</button>
       </div>
+      <div class="build-page__subtitle muted"${buildCommitMessageTitle(state.currentBuild.commitMessage, 70)}>${escapeHtml(truncateCommitMessage(state.currentBuild.commitMessage, 70))}</div>
       <details class="build-summary" open>
-        <summary>Build Details</summary>
-        <div class="build-summary__actions">
+        <summary class="build-summary__summary">
+          <span>Build Details</span>
           <button id="build-artifacts-button" class="button button--ghost">Artifacts</button>
-        </div>
+        </summary>
         <div class="build-summary__grid">
           ${detailCard("Definition", state.currentBuild.definitionName)}
           ${detailCard("Project", state.currentBuild.projectName)}
@@ -546,7 +561,7 @@
       </details>
       <section class="task-tree-shell">
         <div class="section-head">
-          <h3>Build Details</h3>
+          <h3>Build Timeline</h3>
           <span class="muted">${escapeHtml(state.currentTimelineMeta?.cached ? "cached timeline" : "fresh timeline")}</span>
         </div>
         <div class="task-tree">${renderTimelineTree(state.currentTimeline)}</div>
@@ -980,15 +995,23 @@
     return "build-item__corner--neutral";
   }
 
-  function truncateCommitMessage(value) {
+  function truncateCommitMessage(value, maxLength = 72) {
     const text = String(value || "").trim();
     if (!text) {
       return "No commit message";
     }
-    if (text.length <= 72) {
+    if (text.length <= maxLength) {
       return text;
     }
-    return `${text.slice(0, 69)}...`;
+    return `${text.slice(0, Math.max(maxLength - 3, 1))}...`;
+  }
+
+  function buildCommitMessageTitle(value, maxLength = 72) {
+    const text = String(value || "").trim();
+    if (!text || text.length <= maxLength) {
+      return "";
+    }
+    return ` title="${escapeAttr(text)}"`;
   }
 
   function buildDefinitionTree(definitions) {

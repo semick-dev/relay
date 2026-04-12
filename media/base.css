@@ -719,6 +719,12 @@ input:focus {
   justify-content: flex-end;
 }
 
+.build-page__subtitle {
+  margin-top: calc(-1 * var(--space-3));
+  margin-bottom: var(--space-2);
+  font-size: 0.95rem;
+}
+
 .build-summary {
   border: 1px solid var(--border-0);
   border-radius: 0;
@@ -732,8 +738,11 @@ input:focus {
   font-weight: 600;
 }
 
-.build-summary__actions {
-  padding: 0 16px 12px;
+.build-summary__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .build-summary__grid {
@@ -747,6 +756,12 @@ input:focus {
   display: grid;
   gap: 14px;
   min-width: 0;
+}
+
+.section-head h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
 }
 
 .task-tree {
