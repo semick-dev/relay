@@ -574,6 +574,7 @@ input:focus {
 
 .definition-row--item {
   cursor: pointer;
+  color: var(--fg-0);
 }
 
 .definition-row--item:hover {
@@ -585,7 +586,15 @@ input:focus {
 }
 
 .definition-row--folder {
-  color: var(--fg-1);
+  color: var(--fg-2);
+}
+
+.definition-row--folder .definition-row__label {
+  font-weight: 400;
+}
+
+.definition-row--item .definition-row__label {
+  font-weight: 600;
 }
 
 .definition-row__ascii {

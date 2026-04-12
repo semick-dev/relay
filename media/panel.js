@@ -903,7 +903,17 @@
       }
       cursor.definitions.push(definition);
     }
-    return renderFolderNode(root, []);
+    return `
+      <div class="definition-tree-node">
+        <div class="definition-row definition-row--folder">
+          <span class="definition-row__ascii">└─</span>
+          <span class="definition-row__label">All Matching Build Definitions</span>
+        </div>
+        <div class="definition-tree-node__children">
+          ${renderFolderNode(root, ["  "])}
+        </div>
+      </div>
+    `;
   }
 
   function renderFolderNode(node, lineage) {
@@ -916,7 +926,7 @@
           <div class="definition-tree-node">
             <div class="definition-row definition-row--folder">
               <span class="definition-row__ascii">${escapeHtml(connector)}</span>
-              <span class="definition-row__label">${escapeHtml(name)}</span>
+              <span class="definition-row__label">${escapeHtml(`${name}/`)}</span>
             </div>
             <div class="definition-tree-node__children">
               ${renderFolderNode(folder, nextLineage)}
@@ -942,7 +952,7 @@
     return `
       <button class="definition-row definition-row--item${selected}" data-definition-id="${definition.id}">
         <span class="definition-row__ascii">${escapeHtml(connector)}</span>
-        <span class="definition-row__label">${escapeHtml(definition.name)}</span>
+        <span class="definition-row__label">• ${escapeHtml(definition.name)}</span>
         <span class="definition-row__meta">#${escapeHtml(String(definition.id))} · rev ${escapeHtml(String(definition.revision))} · ${escapeHtml(definition.queueStatus || "enabled")}</span>
       </button>
     `;
