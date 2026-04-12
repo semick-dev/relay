@@ -223,6 +223,7 @@ export class RelayAdoClient {
   ): Promise<{ body: AdoDefinitionsResponse; continuationToken?: string }> {
     const url = new URL(`${encodeURIComponent(project)}/_apis/build/definitions`, normalizeOrgUrl(orgUrl));
     url.searchParams.set("$top", "100");
+    url.searchParams.set("queryOrder", "lastModifiedDescending");
     url.searchParams.set("api-version", "7.1");
     if (continuationToken) {
       url.searchParams.set("continuationToken", continuationToken);
