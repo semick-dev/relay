@@ -31,7 +31,7 @@ An Azure DevOps interface that allows easy access to build artifacts and task de
 ## Notes
 
 - `ADO_TOKEN` must be present in the VS Code environment for Azure DevOps requests to succeed.
-- Large task logs are gated behind an idempotent download action. Repated clicks will simply load previous download.
+- Large task logs are gated behind an idempotent download action. Repeated clicks will simply load previously downloaded file.
 - Contributor and local debugging instructions live in `CONTRIBUTING.md`.
 
 ## Data Storage
