@@ -1,12 +1,20 @@
 # Changelog
 
+## 0.0.6
+
+- Fixed Azure DevOps definitions paging to use explicit `queryOrder=lastModifiedDescending` with continuation tokens to fix when paging is required from `definitions`
+- Surfaced raw Azure DevOps error text in failed HTTP responses for easier diagnosis
+- Returned cached definitions immediately instead of waiting on background precache when the cache is already fresh
+- Changed the definition name glob filter to apply on `Enter` or focus loss instead of every keystroke
+- Removed the redundant build-list pane `Back` button and stopped stacking definition build-list history entries while switching definitions
+
 ## 0.0.5
 
-- resolve readme confusion
+- Resolve readme confusion
 
 ## 0.0.4
 
-- change demo image to external image
+- Change demo image to external image
 
 ## 0.0.3
 
