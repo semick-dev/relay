@@ -16,6 +16,8 @@
     definitionBuilds: [],
     definitionBuildsMeta: null,
     buildFilter: "all",
+    currentBuildLoading: false,
+    currentBuildRequestId: 0,
     currentBuild: null,
     currentTimeline: [],
     currentTimelineMeta: null,
@@ -183,15 +185,24 @@
   }
 
   async function openBuild(buildId, replaceHistory) {
-    const url = `/api/builds/${buildId}?orgUrl=${encodeURIComponent(state.orgUrl)}&project=${encodeURIComponent(state.selectedProject)}`;
-    const response = await apiGet(url);
-    state.currentBuild = response.build;
+    const requestId = state.currentBuildRequestId + 1;
+    state.currentBuildRequestId = requestId;
+    state.currentBuildLoading = true;
+    state.currentBuild = {
+      id: buildId,
+      buildNumber: `#${buildId}`,
+      definitionName: state.selectedDefinition?.name || "Build",
+      projectName: state.selectedProject,
+      status: "loading",
+      result: "loading",
+      cached: false,
+      lastRefresh: ""
+    };
     state.currentTask = null;
+    state.currentTimeline = [];
+    state.currentTimelineMeta = null;
     state.currentArtifacts = [];
     state.artifactNotice = "";
-    const timelineResponse = await apiGet(`/api/builds/${buildId}/timeline?orgUrl=${encodeURIComponent(state.orgUrl)}&project=${encodeURIComponent(state.selectedProject)}`);
-    state.currentTimeline = timelineResponse.timeline;
-    state.currentTimelineMeta = timelineResponse;
     commitNavState({
       mode: "build",
       project: state.selectedProject,
@@ -199,10 +210,30 @@
       buildId
     }, replaceHistory);
     renderBuildPage();
-    await emit("relay.ui.panel.build.loaded", {
-      buildId,
-      cached: response.build.cached
-    }, "span");
+    try {
+      const url = `/api/builds/${buildId}?orgUrl=${encodeURIComponent(state.orgUrl)}&project=${encodeURIComponent(state.selectedProject)}`;
+      const response = await apiGet(url);
+      if (state.currentBuildRequestId !== requestId) {
+        return;
+      }
+      state.currentBuild = response.build;
+      const timelineResponse = await apiGet(`/api/builds/${buildId}/timeline?orgUrl=${encodeURIComponent(state.orgUrl)}&project=${encodeURIComponent(state.selectedProject)}`);
+      if (state.currentBuildRequestId !== requestId) {
+        return;
+      }
+      state.currentTimeline = timelineResponse.timeline;
+      state.currentTimelineMeta = timelineResponse;
+      state.currentBuildLoading = false;
+      renderBuildPage();
+      await emit("relay.ui.panel.build.loaded", {
+        buildId,
+        cached: response.build.cached
+      }, "span");
+    } finally {
+      if (state.currentBuildRequestId === requestId) {
+        state.currentBuildLoading = false;
+      }
+    }
   }
 
   async function restoreNavState(navState, replaceHistory) {
@@ -478,6 +509,21 @@
     setMainCachePill(state.currentTimelineMeta?.cached ?? state.currentBuild.cached, state.currentTimelineMeta?.lastRefresh ?? state.currentBuild.lastRefresh, "Refresh build");
     setDetailCachePill(null, null, "No detail cache");
     elements.buildList.className = "build-page";
+    if (state.currentBuildLoading) {
+      elements.buildList.innerHTML = `
+        <div class="build-page__topbar">
+          <button id="build-page-back" class="button button--ghost">Back</button>
+        </div>
+        <div class="detail-pane detail-pane--loading">
+          <div class="loading-state">
+            <span class="spinner loading-state__spinner"></span>
+            <div class="loading-state__label">Loading build details...</div>
+          </div>
+        </div>
+      `;
+      document.getElementById("build-page-back").addEventListener("click", () => history.back());
+      return;
+    }
     elements.buildList.innerHTML = `
       <div class="build-page__topbar">
         <button id="build-page-back" class="button button--ghost">Back</button>
