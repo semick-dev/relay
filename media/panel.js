@@ -201,6 +201,7 @@
     if (navState.mode === "definitions") {
       state.selectedDefinition = null;
       state.currentBuild = null;
+      state.currentTask = null;
       commitNavState(navState, replaceHistory);
       renderDefinitionsScreen();
       return;
@@ -216,6 +217,8 @@
     state.selectedDefinition = definition;
 
     if (navState.mode === "definitionBuilds") {
+      state.currentBuild = null;
+      state.currentTask = null;
       await loadDefinitionBuilds(definition.id, false);
       commitNavState(navState, replaceHistory);
       renderDefinitionsScreen();
@@ -247,10 +250,11 @@
     clearBuildPageChrome();
     elements.content.classList.toggle("is-split", Boolean(state.selectedDefinition));
     elements.detailPanel.classList.toggle("is-hidden", !state.selectedDefinition);
-    elements.mainKind.textContent = "Project";
+    elements.mainKind.textContent = "Definitions";
     elements.mainTitle.textContent = state.selectedProject;
+    elements.detailKind.textContent = state.selectedDefinition ? "Builds" : "Build";
     elements.detailTitle.textContent = state.selectedDefinition
-      ? `${state.selectedDefinition.name} · builds`
+      ? state.selectedDefinition.name
       : "Definition builds";
     renderDefinitionsToolbar();
     renderDefinitionsTree();
@@ -417,6 +421,16 @@
     }
     renderBanner("");
     await openDefinition(definition, true);
+  }
+
+  function closeDefinitionBuildsPane() {
+    state.selectedDefinition = null;
+    state.currentBuild = null;
+    state.currentTask = null;
+    state.definitionBuilds = [];
+    state.definitionBuildsMeta = null;
+    commitNavState({ mode: "definitions", project: state.selectedProject }, true);
+    renderDefinitionsScreen();
   }
 
   function renderBuildPage() {
@@ -694,6 +708,10 @@
   }
 
   function closeTaskPane() {
+    if (state.selectedDefinition && !state.currentBuild) {
+      closeDefinitionBuildsPane();
+      return;
+    }
     if (state.currentBuild) {
       state.currentTask = null;
       renderBuildPage();
