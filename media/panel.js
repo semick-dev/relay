@@ -322,7 +322,7 @@
         <div class="selector-row">
           <input id="definition-selector" class="definitions-filter" type="text" value="${escapeAttr(`${state.selectedDefinition.id} · ${state.selectedDefinition.name}`)}" />
           <button id="definition-selector-open" class="button button--primary">Load</button>
-          <button id="definition-selector-back" class="button button--ghost">Back</button>
+          <button id="definition-selector-close" class="button button--ghost">Close</button>
         </div>
       </div>
       <div class="definition-builds-meta muted">
@@ -350,8 +350,8 @@
         void applyDefinitionSelection();
       }
     });
-    document.getElementById("definition-selector-back").addEventListener("click", () => {
-      history.back();
+    document.getElementById("definition-selector-close").addEventListener("click", () => {
+      closeDefinitionBuildsPane();
     });
 
     for (const button of elements.detailBody.querySelectorAll("[data-filter]")) {
@@ -410,7 +410,17 @@
       return;
     }
     renderBanner("");
-    await openDefinition(definition, false);
+    await openDefinition(definition, true);
+  }
+
+  function closeDefinitionBuildsPane() {
+    state.selectedDefinition = null;
+    state.currentBuild = null;
+    state.currentTask = null;
+    state.definitionBuilds = [];
+    state.definitionBuildsMeta = null;
+    commitNavState({ mode: "definitions", project: state.selectedProject }, true);
+    renderDefinitionsScreen();
   }
 
   function renderBuildPage() {
