@@ -28,6 +28,7 @@
   const elements = {
     buildList: document.getElementById("build-list"),
     mainPanel: document.getElementById("main-panel"),
+    mainKind: document.getElementById("main-kind"),
     mainTitle: document.getElementById("main-title"),
     mainStatus: document.getElementById("main-status"),
     mainStatusCorner: document.getElementById("main-status-corner"),
@@ -246,6 +247,7 @@
     clearBuildPageChrome();
     elements.content.classList.toggle("is-split", Boolean(state.selectedDefinition));
     elements.detailPanel.classList.toggle("is-hidden", !state.selectedDefinition);
+    elements.mainKind.textContent = "Project";
     elements.mainTitle.textContent = state.selectedProject;
     elements.detailTitle.textContent = state.selectedDefinition
       ? `${state.selectedDefinition.name} · builds`
@@ -422,6 +424,7 @@
     elements.detailPanel.classList.add("is-hidden");
     elements.toolbar.className = "toolbar is-hidden";
     elements.mainPanel.classList.add("is-build-page");
+    elements.mainKind.textContent = "Build";
     elements.mainStatusCorner.className = `panel-corner ${buildStatusClass(state.currentBuild)}`;
     elements.mainTitle.textContent = `#${state.currentBuild.id} · ${state.currentBuild.buildNumber}`;
     elements.mainStatus.textContent = `${state.currentBuild.definitionName} · ${state.currentBuild.status} / ${state.currentBuild.result}`;
@@ -704,6 +707,7 @@
     elements.content.classList.remove("is-split");
     elements.detailPanel.classList.add("is-hidden");
     elements.toolbar.className = "toolbar is-hidden";
+    elements.mainKind.textContent = "Project";
     elements.mainTitle.textContent = state.selectedProject;
     elements.mainStatus.textContent = `${state.selectedProject} · Artifacts`;
     setMainCachePill(null, null, "No artifact cache");

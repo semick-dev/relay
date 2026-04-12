@@ -416,7 +416,9 @@ input:focus {
 }
 
 .panel--main.is-build-page .panel__header-actions {
-  padding-right: 64px;
+  margin-left: auto;
+  justify-content: flex-end;
+  padding-right: 0;
 }
 
 .panel--detail.is-hidden {
@@ -689,6 +691,10 @@ input:focus {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
+}
+
+.build-page__topbar {
+  justify-content: flex-end;
 }
 
 .build-summary {

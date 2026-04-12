@@ -141,7 +141,7 @@ export class RelayMainPanel {
       <span id="main-status-corner" class="panel-corner is-hidden" aria-hidden="true"></span>
       <div class="panel__header">
         <div>
-          <p class="eyebrow">Project</p>
+          <p id="main-kind" class="eyebrow">Project</p>
           <h2 id="main-title">Awaiting project selection</h2>
         </div>
         <div class="panel__header-actions">
