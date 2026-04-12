@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.7
+
+- Fix various alignment and spacing issues across all panels
+- Update definition and build click actions to feel more responsive
+  - Panels render async now
+- Add commit message to relevant locations
+- Refine the `Build Details` pane look/feel
+
 ## 0.0.6
 
 - Fixed Azure DevOps definitions paging to use explicit `queryOrder=lastModifiedDescending` with continuation tokens to fix when paging is required from `definitions`

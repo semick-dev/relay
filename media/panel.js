@@ -518,13 +518,14 @@
     elements.mainKind.textContent = "Build";
     elements.mainStatusCorner.className = `panel-corner ${buildStatusClass(state.currentBuild)}`;
     elements.mainTitle.textContent = `#${state.currentBuild.id} · ${state.currentBuild.buildNumber}`;
-    elements.mainStatus.textContent = `${state.currentBuild.definitionName} · ${state.currentBuild.status} / ${state.currentBuild.result}`;
+    elements.mainStatus.textContent = "";
     setMainCachePill(state.currentTimelineMeta?.cached ?? state.currentBuild.cached, state.currentTimelineMeta?.lastRefresh ?? state.currentBuild.lastRefresh, "Refresh build");
     setDetailCachePill(null, null, "No detail cache");
     elements.buildList.className = "build-page";
     if (state.currentBuildLoading) {
       elements.buildList.innerHTML = `
         <div class="build-page__topbar">
+          <button id="build-artifacts-button" class="button button--ghost">Artifacts</button>
           <button id="build-page-back" class="button button--ghost">Back</button>
         </div>
         <div class="build-page__subtitle muted"${buildCommitMessageTitle(state.currentBuild.commitMessage, 70)}>${escapeHtml(truncateCommitMessage(state.currentBuild.commitMessage, 70))}</div>
@@ -540,14 +541,12 @@
     }
     elements.buildList.innerHTML = `
       <div class="build-page__topbar">
+        <button id="build-artifacts-button" class="button button--ghost">Artifacts</button>
         <button id="build-page-back" class="button button--ghost">Back</button>
       </div>
       <div class="build-page__subtitle muted"${buildCommitMessageTitle(state.currentBuild.commitMessage, 70)}>${escapeHtml(truncateCommitMessage(state.currentBuild.commitMessage, 70))}</div>
       <details class="build-summary" open>
-        <summary class="build-summary__summary">
-          <span>Build Details</span>
-          <button id="build-artifacts-button" class="button button--ghost">Artifacts</button>
-        </summary>
+        <summary></summary>
         <div class="build-summary__grid">
           ${detailCard("Definition", state.currentBuild.definitionName)}
           ${detailCard("Project", state.currentBuild.projectName)}
@@ -1209,7 +1208,13 @@
   }
 
   function detailCard(label, value) {
-    return `<div class="detail-card"><p class="eyebrow">${escapeHtml(label)}</p><div><code>${escapeHtml(value)}</code></div></div>`;
+    const text = String(value || "n/a");
+    const valueClass = isTechnicalValue(text) ? "detail-card__value detail-card__value--technical" : "detail-card__value";
+    return `<div class="detail-card"><p class="eyebrow">${escapeHtml(label)}</p><div class="${valueClass}" title="${escapeAttr(text)}">${escapeHtml(text)}</div></div>`;
+  }
+
+  function isTechnicalValue(value) {
+    return value.startsWith("refs/") || value.includes("/") || value.includes("#");
   }
 
   function formatDate(value) {
