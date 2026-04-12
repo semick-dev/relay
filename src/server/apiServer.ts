@@ -342,7 +342,6 @@ export class RelayApiServer {
 
     const adoUrl = new URL(`${encodeURIComponent(project)}/_apis/build/definitions`, orgUrl);
     adoUrl.searchParams.set("api-version", "7.1");
-    adoUrl.searchParams.set("includeLatestBuilds", "true");
 
     return await this.withCache<RelayDefinitionSummary[], DefinitionsResponse>({
       cacheUrl: adoUrl.toString(),
@@ -552,6 +551,22 @@ export class RelayApiServer {
       throw new Error("Project is required.");
     }
 
+    const adoUrl = new URL(`${encodeURIComponent(project)}/_apis/build/definitions`, orgUrl);
+    adoUrl.searchParams.set("api-version", "7.1");
+
+    if (limitedRefresh && await this.cacheStore.isFresh("GET", adoUrl.toString())) {
+      const cached = await this.cacheStore.readJson<RelayDefinitionSummary[]>("GET", adoUrl.toString());
+      return {
+        ok: true,
+        projectName: project,
+        running: false,
+        loadedCount: cached?.body.length ?? 0,
+        totalCount: cached?.body.length ?? 0,
+        lastRefresh: cached?.lastRefresh,
+        error: undefined
+      };
+    }
+
     const jobKey = this.getDefinitionsJobKey(orgUrl, project);
     const existing = this.definitionJobs.get(jobKey);
     if (existing?.running) {
@@ -567,10 +582,6 @@ export class RelayApiServer {
 
     void (async () => {
       try {
-        const adoUrl = new URL(`${encodeURIComponent(project)}/_apis/build/definitions`, orgUrl);
-        adoUrl.searchParams.set("api-version", "7.1");
-        adoUrl.searchParams.set("includeLatestBuilds", "true");
-
         const previous = limitedRefresh
           ? await this.cacheStore.readJson<RelayDefinitionSummary[]>("GET", adoUrl.toString())
           : null;
