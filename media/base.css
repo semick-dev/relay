@@ -660,6 +660,28 @@ input:focus {
   min-height: 220px;
 }
 
+.detail-pane--loading {
+  min-height: 320px;
+  place-items: center;
+}
+
+.loading-state {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  color: var(--fg-2);
+}
+
+.loading-state__spinner {
+  width: 28px;
+  height: 28px;
+}
+
+.loading-state__label {
+  font-size: 0.9rem;
+  letter-spacing: 0.02em;
+}
+
 .selector-shell {
   display: grid;
   gap: 8px;

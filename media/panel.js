@@ -10,6 +10,8 @@
     selectedDefinition: null,
     definitions: [],
     definitionsLoading: false,
+    definitionBuildsLoading: false,
+    definitionBuildsRequestId: 0,
     definitionFilter: "",
     definitionBuilds: [],
     definitionBuildsMeta: null,
@@ -145,21 +147,39 @@
     state.selectedDefinition = definition;
     state.currentBuild = null;
     state.currentTask = null;
-    await loadDefinitionBuilds(definition.id, true);
     commitNavState({
       mode: "definitionBuilds",
       project: state.selectedProject,
       definitionId: definition.id
     }, replaceHistory);
     renderDefinitionsScreen();
+    await loadDefinitionBuilds(definition.id, true);
+    if (state.selectedDefinition?.id === definition.id) {
+      renderDefinitionsScreen();
+    }
   }
 
   async function loadDefinitionBuilds(definitionId, forceRefresh) {
+    const requestId = state.definitionBuildsRequestId + 1;
+    state.definitionBuildsRequestId = requestId;
+    state.definitionBuildsLoading = true;
+    if (state.selectedDefinition?.id === definitionId) {
+      renderDefinitionBuildsPane();
+    }
     state.buildFilter = state.buildFilter || "all";
-    const url = `/api/projects/${encodeURIComponent(state.selectedProject)}/builds?orgUrl=${encodeURIComponent(state.orgUrl)}&definitionId=${definitionId}${forceRefresh ? "&refresh=1" : ""}`;
-    const response = await apiGet(url);
-    state.definitionBuilds = response.builds;
-    state.definitionBuildsMeta = response;
+    try {
+      const url = `/api/projects/${encodeURIComponent(state.selectedProject)}/builds?orgUrl=${encodeURIComponent(state.orgUrl)}&definitionId=${definitionId}${forceRefresh ? "&refresh=1" : ""}`;
+      const response = await apiGet(url);
+      if (state.definitionBuildsRequestId !== requestId) {
+        return;
+      }
+      state.definitionBuilds = response.builds;
+      state.definitionBuildsMeta = response;
+    } finally {
+      if (state.definitionBuildsRequestId === requestId) {
+        state.definitionBuildsLoading = false;
+      }
+    }
   }
 
   async function openBuild(buildId, replaceHistory) {
@@ -331,6 +351,18 @@
 
   function renderDefinitionBuildsPane() {
     elements.detailBody.className = "detail-pane";
+    if (state.definitionBuildsLoading) {
+      setDetailCachePill(null, null, "Loading build list");
+      elements.detailBody.innerHTML = `
+        <div class="detail-pane detail-pane--loading">
+          <div class="loading-state">
+            <span class="spinner loading-state__spinner"></span>
+            <div class="loading-state__label">Loading builds...</div>
+          </div>
+        </div>
+      `;
+      return;
+    }
     elements.detailBody.innerHTML = `
       <div class="selector-shell">
         <label class="eyebrow" for="definition-selector">Definition</label>
@@ -427,6 +459,7 @@
     state.selectedDefinition = null;
     state.currentBuild = null;
     state.currentTask = null;
+    state.definitionBuildsLoading = false;
     state.definitionBuilds = [];
     state.definitionBuildsMeta = null;
     commitNavState({ mode: "definitions", project: state.selectedProject }, true);
