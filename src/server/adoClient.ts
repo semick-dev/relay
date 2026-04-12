@@ -12,7 +12,8 @@ export class RelayHttpError extends Error {
   constructor(
     message: string,
     readonly status: number,
-    readonly url: string
+    readonly url: string,
+    readonly responseText?: string
   ) {
     super(message);
   }
@@ -241,7 +242,10 @@ export class RelayAdoClient {
     });
 
     if (!response.ok) {
-      throw new RelayHttpError(`ADO request failed (${response.status}) for ${url}`, response.status, url);
+      const responseText = await response.text();
+      const trimmed = responseText.trim();
+      const detail = trimmed ? `: ${trimmed}` : "";
+      throw new RelayHttpError(`ADO request failed (${response.status}) for ${url}${detail}`, response.status, url, trimmed || undefined);
     }
 
     const continuationToken = response.headers.get("x-ms-continuationtoken") ?? undefined;
