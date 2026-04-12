@@ -8,6 +8,15 @@ import {
 } from "../shared/types";
 
 export class RelayAuthError extends Error {}
+export class RelayHttpError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly url: string
+  ) {
+    super(message);
+  }
+}
 
 export class RelayAdoClient {
   constructor(private readonly token: string | undefined) {}
@@ -65,15 +74,7 @@ export class RelayAdoClient {
     let continuationToken: string | undefined;
 
     do {
-      const url = new URL(`${encodeURIComponent(project)}/_apis/build/definitions`, normalizeOrgUrl(orgUrl));
-      url.searchParams.set("api-version", "7.1");
-      url.searchParams.set("includeLatestBuilds", "true");
-      url.searchParams.set("$top", "100");
-      if (continuationToken) {
-        url.searchParams.set("continuationToken", continuationToken);
-      }
-
-      const response = await this.request<AdoDefinitionsResponse>(url.toString());
+      const response = await this.requestDefinitionsPage(orgUrl, project, continuationToken);
       definitions.push(...response.body.value.map((definition) => ({
         id: definition.id,
         name: definition.name,
@@ -214,6 +215,20 @@ export class RelayAdoClient {
     return response.body;
   }
 
+  private async requestDefinitionsPage(
+    orgUrl: string,
+    project: string,
+    continuationToken?: string
+  ): Promise<{ body: AdoDefinitionsResponse; continuationToken?: string }> {
+    const url = new URL(`${encodeURIComponent(project)}/_apis/build/definitions`, normalizeOrgUrl(orgUrl));
+    url.searchParams.set("$top", "100");
+    url.searchParams.set("api-version", "7.1");
+    if (continuationToken) {
+      url.searchParams.set("continuationToken", continuationToken);
+    }
+    return await this.request<AdoDefinitionsResponse>(url.toString());
+  }
+
   private async request<T>(url: string): Promise<{ body: T; continuationToken?: string }> {
     this.ensureAuth();
 
@@ -226,7 +241,7 @@ export class RelayAdoClient {
     });
 
     if (!response.ok) {
-      throw new Error(`ADO request failed (${response.status}) for ${url}`);
+      throw new RelayHttpError(`ADO request failed (${response.status}) for ${url}`, response.status, url);
     }
 
     const continuationToken = response.headers.get("x-ms-continuationtoken") ?? undefined;
