@@ -277,9 +277,18 @@
       </div>
     `;
     const input = document.getElementById("definition-filter");
-    input.addEventListener("input", () => {
+    const applyDefinitionFilter = () => {
       state.definitionFilter = input.value;
       renderDefinitionsTree();
+    };
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        applyDefinitionFilter();
+      }
+    });
+    input.addEventListener("blur", () => {
+      applyDefinitionFilter();
     });
   }
 
