@@ -77,5 +77,8 @@
     "@types/node": "^22.15.17",
     "@types/vscode": "^1.100.0",
     "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "yaml": "^2.8.3"
   }
 }

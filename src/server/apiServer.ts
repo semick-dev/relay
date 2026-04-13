@@ -140,7 +140,8 @@ export class RelayApiServer {
         const project = decodeURIComponent(requestUrl.pathname.split("/")[3] ?? "");
         const definitionId = Number(requestUrl.pathname.split("/")[5] ?? "0");
         const orgUrl = requestUrl.searchParams.get("orgUrl") ?? "";
-        const payload = await this.loadDefinitionQueueMetadata(orgUrl, project, definitionId);
+        const sourceBranch = requestUrl.searchParams.get("sourceBranch") ?? "";
+        const payload = await this.loadDefinitionQueueMetadata(orgUrl, project, definitionId, sourceBranch || undefined);
         this.sendJson(res, 200, payload);
         return;
       }
@@ -385,14 +386,15 @@ export class RelayApiServer {
   private async loadDefinitionQueueMetadata(
     orgUrl: string,
     project: string,
-    definitionId: number
+    definitionId: number,
+    sourceBranch?: string
   ): Promise<DefinitionQueueMetadataResponse> {
     validateOrgUrl(orgUrl);
     if (!project || !Number.isFinite(definitionId) || definitionId <= 0) {
       throw new Error("Project and definitionId are required.");
     }
 
-    const definition = await this.adoClient.getDefinitionQueueMetadata(orgUrl, project, definitionId);
+    const definition = await this.adoClient.getDefinitionQueueMetadata(orgUrl, project, definitionId, sourceBranch);
     return {
       ok: true,
       projectName: project,

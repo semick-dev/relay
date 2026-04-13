@@ -166,6 +166,9 @@ export interface RelayDefinitionQueueMetadata {
   id: number;
   name: string;
   path: string;
+  isYaml: boolean;
+  yamlFilename?: string;
+  parameterError?: string;
   queueStatus?: string;
   defaultBranch?: string;
   repositoryType?: string;
@@ -210,7 +213,7 @@ export interface DefinitionQueueMetadataResponse {
 
 export interface QueueBuildRequest {
   sourceBranch?: string;
-  parameters?: Record<string, string> | string;
+  parameters?: Record<string, unknown>;
   variables?: Record<string, string>;
 }
 

@@ -10,6 +10,7 @@ import {
   RelayProject,
   RelayTimelineNode
 } from "../shared/types";
+import { parseDocument, Scalar, YAMLMap, YAMLSeq } from "yaml";
 
 export class RelayAuthError extends Error {}
 export class RelayHttpError extends Error {
@@ -110,19 +111,42 @@ export class RelayAdoClient {
     });
   }
 
-  async getDefinitionQueueMetadata(orgUrl: string, project: string, definitionId: number): Promise<RelayDefinitionQueueMetadata> {
+  async getDefinitionQueueMetadata(
+    orgUrl: string,
+    project: string,
+    definitionId: number,
+    sourceBranch?: string
+  ): Promise<RelayDefinitionQueueMetadata> {
     const url = new URL(`${encodeURIComponent(project)}/_apis/build/definitions/${definitionId}`, normalizeOrgUrl(orgUrl));
     url.searchParams.set("api-version", "7.1");
     const payload = await this.requestJson<AdoDefinition>(url.toString());
+    const isYaml = payload.process?.type === 2;
+    const branch = sourceBranch
+      ? normalizeBranchRef(sourceBranch)
+      : payload.repository?.defaultBranch
+        ? normalizeBranchRef(payload.repository.defaultBranch)
+        : undefined;
+    let parameters: RelayDefinitionParameter[] = [];
+    let parameterError: string | undefined;
+    if (isYaml) {
+      try {
+        parameters = await this.getYamlTemplateParameters(orgUrl, project, definitionId);
+      } catch (error) {
+        parameterError = error instanceof Error ? error.message : String(error);
+      }
+    }
     return {
       id: payload.id,
       name: payload.name,
       path: payload.path || "\\",
+      isYaml,
+      yamlFilename: payload.process?.yamlFilename,
+      parameterError,
       queueStatus: payload.queueStatus,
-      defaultBranch: payload.repository?.defaultBranch,
+      defaultBranch: branch,
       repositoryType: payload.repository?.type,
       repositoryName: payload.repository?.name,
-      parameters: mapDefinitionParameters(payload.processParameters),
+      parameters,
       variables: mapDefinitionVariables(payload.variables)
     };
   }
@@ -133,24 +157,32 @@ export class RelayAdoClient {
     definitionId: number,
     options: {
       sourceBranch?: string;
-      parameters?: Record<string, string> | string;
+      parameters?: Record<string, unknown>;
       variables?: Record<string, string>;
     }
   ): Promise<RelayBuildDetails> {
-    const url = new URL(`${encodeURIComponent(project)}/_apis/build/builds`, normalizeOrgUrl(orgUrl));
+    const definition = await this.getDefinitionQueueMetadata(orgUrl, project, definitionId, options.sourceBranch);
+    if (!definition.isYaml) {
+      throw new Error("Only YAML-backed definitions are supported for queueing.");
+    }
+
+    const url = new URL(`${encodeURIComponent(project)}/_apis/pipelines/${definitionId}/runs`, normalizeOrgUrl(orgUrl));
     url.searchParams.set("api-version", "7.1");
     this.ensureAuth();
 
-    const body: AdoQueueBuildRequest = {
-      definition: { id: definitionId }
-    };
-    if (options.sourceBranch) {
-      body.sourceBranch = options.sourceBranch;
+    const body: AdoRunPipelineRequest = {};
+    const sourceBranch = options.sourceBranch ? normalizeBranchRef(options.sourceBranch) : definition.defaultBranch;
+    if (sourceBranch) {
+      body.resources = {
+        repositories: {
+          self: {
+            refName: sourceBranch
+          }
+        }
+      };
     }
-    if (typeof options.parameters === "string") {
-      body.parameters = options.parameters;
-    } else if (options.parameters && Object.keys(options.parameters).length > 0) {
-      body.parameters = JSON.stringify(options.parameters);
+    if (options.parameters && Object.keys(options.parameters).length > 0) {
+      body.templateParameters = normalizeTemplateParameters(options.parameters);
     }
     if (options.variables && Object.keys(options.variables).length > 0) {
       body.variables = Object.fromEntries(
@@ -158,33 +190,19 @@ export class RelayAdoClient {
       );
     }
 
-    const auth = Buffer.from(`:${this.token ?? ""}`, "utf8").toString("base64");
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${auth}`,
-        Accept: "application/json",
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(body)
-    });
+    const payload = await this.requestWithBodyJson<AdoPipelineRun>(url.toString(), body);
+    return await this.getBuild(orgUrl, project, payload.id);
+  }
 
-    if (!response.ok) {
-      const responseText = await response.text();
-      const trimmed = responseText.trim();
-      const detail = trimmed ? `: ${trimmed}` : "";
-      throw new RelayHttpError(`ADO queue request failed (${response.status}) for ${url}${detail}`, response.status, url.toString(), trimmed || undefined);
-    }
-
-    const payload = await response.json() as AdoBuild;
-    return {
-      ...mapBuildSummary(payload),
-      projectName: payload.project?.name ?? project,
-      repository: payload.repository?.name,
-      reason: payload.reason,
-      cached: false,
-      lastRefresh: new Date().toISOString()
-    };
+  private async getYamlTemplateParameters(
+    orgUrl: string,
+    project: string,
+    definitionId: number
+  ): Promise<RelayDefinitionParameter[]> {
+    const url = new URL(`${encodeURIComponent(project)}/_apis/build/definitions/${definitionId}/yaml`, normalizeOrgUrl(orgUrl));
+    url.searchParams.set("api-version", "7.1-preview.1");
+    const yamlText = await this.requestText(url.toString());
+    return mapYamlDefinitionParameters(yamlText);
   }
 
   async getTimeline(orgUrl: string, project: string, buildId: number): Promise<RelayTimelineNode[]> {
@@ -297,6 +315,38 @@ export class RelayAdoClient {
     return response.body;
   }
 
+  private async requestWithBodyJson<T>(url: string, body: unknown): Promise<T> {
+    const response = await this.request<T>(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body)
+    });
+    return response.body;
+  }
+
+  private async requestText(url: string): Promise<string> {
+    this.ensureAuth();
+
+    const auth = Buffer.from(`:${this.token ?? ""}`, "utf8").toString("base64");
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Basic ${auth}`,
+        Accept: "text/plain, application/yaml, text/yaml, application/json"
+      }
+    });
+
+    if (!response.ok) {
+      const responseText = await response.text();
+      const trimmed = responseText.trim();
+      const detail = trimmed ? `: ${trimmed}` : "";
+      throw new RelayHttpError(`ADO request failed (${response.status}) for ${url}${detail}`, response.status, url, trimmed || undefined);
+    }
+
+    return await response.text();
+  }
+
   private async requestDefinitionsPage(
     orgUrl: string,
     project: string,
@@ -312,15 +362,25 @@ export class RelayAdoClient {
     return await this.request<AdoDefinitionsResponse>(url.toString());
   }
 
-  private async request<T>(url: string): Promise<{ body: T; continuationToken?: string }> {
+  private async request<T>(
+    url: string,
+    init?: {
+      method?: string;
+      headers?: Record<string, string>;
+      body?: string;
+    }
+  ): Promise<{ body: T; continuationToken?: string }> {
     this.ensureAuth();
 
     const auth = Buffer.from(`:${this.token ?? ""}`, "utf8").toString("base64");
     const response = await fetch(url, {
+      method: init?.method,
       headers: {
         Authorization: `Basic ${auth}`,
-        Accept: "application/json"
-      }
+        Accept: "application/json",
+        ...init?.headers
+      },
+      body: init?.body
     });
 
     if (!response.ok) {
@@ -418,13 +478,21 @@ interface AdoDefinition {
   revision?: number;
   queueStatus?: string;
   variables?: Record<string, AdoDefinitionVariable>;
-  processParameters?: {
+  processParameters?: string | {
     inputs?: AdoProcessInput[];
+  };
+  process?: {
+    type?: number;
+    yamlFilename?: string;
   };
   repository?: {
     type?: string;
     name?: string;
     defaultBranch?: string;
+  };
+  project?: {
+    id?: string;
+    name?: string;
   };
 }
 
@@ -450,6 +518,22 @@ interface AdoQueueBuildRequest {
   sourceBranch?: string;
   parameters?: string;
   variables?: Record<string, { value: string }>;
+}
+
+interface AdoRunPipelineRequest {
+  resources?: {
+    repositories?: {
+      self?: {
+        refName?: string;
+      };
+    };
+  };
+  templateParameters?: Record<string, unknown>;
+  variables?: Record<string, { value: string }>;
+}
+
+interface AdoPipelineRun {
+  id: number;
 }
 
 interface AdoBuild {
@@ -482,6 +566,7 @@ function mapDefinitionVariables(
   variables?: Record<string, AdoDefinitionVariable>
 ): RelayDefinitionVariable[] {
   return Object.entries(variables ?? {})
+    .filter(([, variable]) => Boolean(variable.allowOverride))
     .map(([name, variable]) => ({
       name,
       value: variable.value,
@@ -492,9 +577,10 @@ function mapDefinitionVariables(
 }
 
 function mapDefinitionParameters(
-  processParameters?: { inputs?: AdoProcessInput[] }
+  processParameters?: string | { inputs?: AdoProcessInput[] }
 ): RelayDefinitionParameter[] {
-  return (processParameters?.inputs ?? [])
+  const parsed = parseDefinitionProcessParameters(processParameters);
+  return (parsed?.inputs ?? [])
     .filter((input) => typeof input.name === "string" && input.name)
     .map((input) => ({
       name: input.name ?? "",
@@ -507,6 +593,23 @@ function mapDefinitionParameters(
     .sort((left, right) => left.name.localeCompare(right.name));
 }
 
+function parseDefinitionProcessParameters(
+  processParameters?: string | { inputs?: AdoProcessInput[] }
+): { inputs?: AdoProcessInput[] } | undefined {
+  if (!processParameters) {
+    return undefined;
+  }
+  if (typeof processParameters === "string") {
+    try {
+      const parsed = JSON.parse(processParameters) as { inputs?: AdoProcessInput[] };
+      return parsed && typeof parsed === "object" ? parsed : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  return processParameters;
+}
+
 function mapDefinitionParameterOptions(
   options?: Record<string, string> | string[]
 ): RelayDefinitionParameterOption[] {
@@ -517,6 +620,130 @@ function mapDefinitionParameterOptions(
     value,
     label: label || value
   }));
+}
+
+function normalizeBranchRef(value: string): string {
+  if (!value) {
+    return value;
+  }
+  if (value.startsWith("refs/")) {
+    return value;
+  }
+  return `refs/heads/${value}`;
+}
+
+function normalizeTemplateParameters(parameters: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(parameters).map(([name, value]) => [name, normalizeTemplateParameterValue(name, value)])
+  );
+}
+
+function normalizeTemplateParameterValue(name: string, value: unknown): unknown {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  try {
+    return parseDocument(value).toJS();
+  } catch (error) {
+    throw new Error(`Invalid YAML for parameter "${name}": ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function mapYamlDefinitionParameters(yamlText: string): RelayDefinitionParameter[] {
+  const document = parseDocument(yamlText);
+  const root = document.contents;
+  if (!(root instanceof YAMLMap)) {
+    return [];
+  }
+
+  const parametersNode = root.get("parameters", true);
+  if (!parametersNode) {
+    return [];
+  }
+
+  if (parametersNode instanceof YAMLSeq) {
+    return parametersNode.items
+      .map((item) => mapYamlParameterNode(item))
+      .filter((item): item is RelayDefinitionParameter => Boolean(item))
+      .sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  if (parametersNode instanceof YAMLMap) {
+    const mapped: RelayDefinitionParameter[] = [];
+    for (const pair of parametersNode.items) {
+        const name = scalarToString(pair.key);
+        if (!name) {
+          continue;
+        }
+        mapped.push({
+          name,
+          type: "string",
+          label: name,
+          defaultValue: stringifyYamlValueNode(pair.value),
+          required: false,
+          options: []
+        });
+    }
+    return mapped.sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  return [];
+}
+
+function mapYamlParameterNode(node: unknown): RelayDefinitionParameter | null {
+  if (!(node instanceof YAMLMap)) {
+    return null;
+  }
+
+  const name = scalarToString(node.get("name", true));
+  if (!name) {
+    return null;
+  }
+
+  const type = scalarToString(node.get("type", true)) || "string";
+  const displayName = scalarToString(node.get("displayName", true));
+  const valuesNode = node.get("values", true);
+  const options = valuesNode instanceof YAMLSeq
+    ? valuesNode.items
+        .map((item) => scalarToString(item))
+        .filter((value): value is string => Boolean(value))
+        .map((value) => ({ label: value, value }))
+    : [];
+
+  return {
+    name,
+    type,
+    label: displayName || name,
+    defaultValue: stringifyYamlValueNode(node.get("default", true)),
+    required: false,
+    options
+  };
+}
+
+function stringifyYamlValueNode(node: unknown): string | undefined {
+  if (node === null || node === undefined) {
+    return undefined;
+  }
+  if (node instanceof Scalar) {
+    return stringifyProcessInputValue(node.value);
+  }
+  return String(node).trimEnd();
+}
+
+function scalarToString(node: unknown): string | undefined {
+  if (node instanceof Scalar) {
+    return stringifyProcessInputValue(node.value);
+  }
+  if (typeof node === "string") {
+    return node;
+  }
+  return undefined;
 }
 
 function stringifyProcessInputValue(value: unknown): string | undefined {
