@@ -259,13 +259,13 @@ export class RelayApiServer {
   }
 
   private buildSessionResponse(): SessionResponse {
-    const authConfigured = Boolean(process.env.ADO_TOKEN);
+    const authConfigured = this.adoClient.hasToken;
     return {
       ok: authConfigured,
       authConfigured,
       message: authConfigured
         ? "Relay is ready."
-        : "ADO_TOKEN is not set. Restart VS Code with ADO_TOKEN in the environment."
+        : "Authentication token is not configured. Use the Set Token button or run \"Azure DevOps Relay: Set Token\" from the Command Palette."
     };
   }
 

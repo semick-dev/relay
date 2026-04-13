@@ -34,6 +34,10 @@ export class RelaySidebarProvider implements vscode.WebviewViewProvider, vscode.
     }));
   }
 
+  notifyAuthChanged(): void {
+    this.view?.webview.postMessage({ type: "authChanged" });
+  }
+
   dispose(): void {
     for (const disposable of this.disposables) {
       disposable.dispose();
@@ -74,6 +78,11 @@ export class RelaySidebarProvider implements vscode.WebviewViewProvider, vscode.
 
     if (typed.type === "themeChanged" && isThemeId(typed.themeId)) {
       this.onThemeChange(typed.themeId);
+      return;
+    }
+
+    if (typed.type === "requestSetToken") {
+      await vscode.commands.executeCommand("relay.setToken");
     }
   }
 

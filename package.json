@@ -2,7 +2,7 @@
   "name": "ado-relay",
   "displayName": "Azure DevOps Relay",
   "description": "An Azure DevOps interface.",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "publisher": "semick-dev",
   "license": "MIT",
   "repository": {
@@ -63,6 +63,14 @@
       {
         "command": "relay.refresh",
         "title": "Azure DevOps Relay: Refresh"
+      },
+      {
+        "command": "relay.setToken",
+        "title": "Azure DevOps Relay: Set Token"
+      },
+      {
+        "command": "relay.clearToken",
+        "title": "Azure DevOps Relay: Clear Token"
       }
     ]
   },

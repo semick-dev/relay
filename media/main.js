@@ -19,6 +19,13 @@
     themeCss: document.getElementById("theme-css")
   };
 
+  window.addEventListener("message", (event) => {
+    const msg = event.data;
+    if (msg && msg.type === "authChanged") {
+      recheckAuth();
+    }
+  });
+
   init().catch((error) => {
     renderBanner(error.message || String(error));
   });
@@ -192,12 +199,33 @@
 
     if (!authConfigured) {
       elements.cachePill.textContent = "Auth Required";
-      elements.projectList.innerHTML = '<div class="empty-state empty-state--compact">Set `ADO_TOKEN` and restart VS Code to load projects.</div>';
-      renderBanner(message || "ADO_TOKEN is not set. Restart VS Code with ADO_TOKEN in the environment.");
+      elements.projectList.innerHTML =
+        '<div class="empty-state empty-state--compact">' +
+        "<p>No authentication token configured.</p>" +
+        '<button id="set-token-button" class="button button--primary">Set Token</button>' +
+        "</div>";
+      var tokenButton = document.getElementById("set-token-button");
+      if (tokenButton) {
+        tokenButton.addEventListener("click", function () {
+          vscode.postMessage({ type: "requestSetToken" });
+        });
+      }
+      renderBanner(message || "Authentication token is not configured.");
       return;
     }
 
     elements.cachePill.textContent = "Idle";
+  }
+
+  function recheckAuth() {
+    apiGet("/api/session").then(function (session) {
+      setAuthState(session.authConfigured, session.message);
+      if (session.authConfigured && state.orgUrl) {
+        return loadProjects(false);
+      }
+    }).catch(function (error) {
+      renderBanner(error.message || String(error));
+    });
   }
 
   function setLoadingState(isLoading) {
@@ -208,7 +236,7 @@
 
   function handleLoadError(error) {
     const message = error?.message || String(error);
-    if (/ADO_TOKEN/i.test(message)) {
+    if (/not configured/i.test(message)) {
       setAuthState(false, message);
       return;
     }
