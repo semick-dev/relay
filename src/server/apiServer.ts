@@ -10,13 +10,17 @@ import {
   RelayArtifactSummary,
   BuildResponse,
   BuildsResponse,
+  DefinitionQueueMetadataResponse,
   DefinitionsPrecacheStatusResponse,
   DefinitionsResponse,
   ErrorResponse,
   ProjectsResponse,
+  QueueBuildRequest,
+  QueueBuildResponse,
   RefreshRequest,
   RelayBuildDetails,
   RelayBuildSummary,
+  RelayDefinitionQueueMetadata,
   RelayDefinitionSummary,
   RelayProject,
   RelayTaskLogInfoResponse,
@@ -132,6 +136,15 @@ export class RelayApiServer {
         return;
       }
 
+      if (method === "GET" && requestUrl.pathname.startsWith("/api/projects/") && requestUrl.pathname.endsWith("/queue-metadata")) {
+        const project = decodeURIComponent(requestUrl.pathname.split("/")[3] ?? "");
+        const definitionId = Number(requestUrl.pathname.split("/")[5] ?? "0");
+        const orgUrl = requestUrl.searchParams.get("orgUrl") ?? "";
+        const payload = await this.loadDefinitionQueueMetadata(orgUrl, project, definitionId);
+        this.sendJson(res, 200, payload);
+        return;
+      }
+
       if (method === "GET" && requestUrl.pathname.startsWith("/api/projects/") && requestUrl.pathname.endsWith("/definitions")) {
         const project = decodeURIComponent(requestUrl.pathname.split("/")[3] ?? "");
         const orgUrl = requestUrl.searchParams.get("orgUrl") ?? "";
@@ -154,6 +167,16 @@ export class RelayApiServer {
         const body = await readJsonBody<{ orgUrl?: string; limitedRefresh?: boolean }>(req);
         const payload = await this.startDefinitionsPrecache(body.orgUrl ?? "", project, body.limitedRefresh !== false);
         this.sendJson(res, 202, payload);
+        return;
+      }
+
+      if (method === "POST" && requestUrl.pathname.startsWith("/api/projects/") && requestUrl.pathname.endsWith("/queue")) {
+        const project = decodeURIComponent(requestUrl.pathname.split("/")[3] ?? "");
+        const definitionId = Number(requestUrl.pathname.split("/")[5] ?? "0");
+        const orgUrl = requestUrl.searchParams.get("orgUrl") ?? "";
+        const body = await readJsonBody<QueueBuildRequest>(req);
+        const payload = await this.queueDefinitionBuild(orgUrl, project, definitionId, body);
+        this.sendJson(res, 201, payload);
         return;
       }
 
@@ -357,6 +380,42 @@ export class RelayApiServer {
       }),
       eventName: "relay.definitions.load"
     });
+  }
+
+  private async loadDefinitionQueueMetadata(
+    orgUrl: string,
+    project: string,
+    definitionId: number
+  ): Promise<DefinitionQueueMetadataResponse> {
+    validateOrgUrl(orgUrl);
+    if (!project || !Number.isFinite(definitionId) || definitionId <= 0) {
+      throw new Error("Project and definitionId are required.");
+    }
+
+    const definition = await this.adoClient.getDefinitionQueueMetadata(orgUrl, project, definitionId);
+    return {
+      ok: true,
+      projectName: project,
+      definition
+    };
+  }
+
+  private async queueDefinitionBuild(
+    orgUrl: string,
+    project: string,
+    definitionId: number,
+    body: QueueBuildRequest
+  ): Promise<QueueBuildResponse> {
+    validateOrgUrl(orgUrl);
+    if (!project || !Number.isFinite(definitionId) || definitionId <= 0) {
+      throw new Error("Project and definitionId are required.");
+    }
+
+    const build = await this.adoClient.queueBuild(orgUrl, project, definitionId, body);
+    return {
+      ok: true,
+      build
+    };
   }
 
   private async loadTimeline(orgUrl: string, project: string, buildId: number, forceRefresh: boolean): Promise<RelayTimelineResponse> {

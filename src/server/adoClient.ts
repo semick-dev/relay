@@ -2,7 +2,11 @@ import {
   RelayArtifactSummary,
   RelayBuildDetails,
   RelayBuildSummary,
+  RelayDefinitionParameter,
+  RelayDefinitionParameterOption,
   RelayDefinitionSummary,
+  RelayDefinitionQueueMetadata,
+  RelayDefinitionVariable,
   RelayProject,
   RelayTimelineNode
 } from "../shared/types";
@@ -104,6 +108,83 @@ export class RelayAdoClient {
       }
       return left.path.localeCompare(right.path);
     });
+  }
+
+  async getDefinitionQueueMetadata(orgUrl: string, project: string, definitionId: number): Promise<RelayDefinitionQueueMetadata> {
+    const url = new URL(`${encodeURIComponent(project)}/_apis/build/definitions/${definitionId}`, normalizeOrgUrl(orgUrl));
+    url.searchParams.set("api-version", "7.1");
+    const payload = await this.requestJson<AdoDefinition>(url.toString());
+    return {
+      id: payload.id,
+      name: payload.name,
+      path: payload.path || "\\",
+      queueStatus: payload.queueStatus,
+      defaultBranch: payload.repository?.defaultBranch,
+      repositoryType: payload.repository?.type,
+      repositoryName: payload.repository?.name,
+      parameters: mapDefinitionParameters(payload.processParameters),
+      variables: mapDefinitionVariables(payload.variables)
+    };
+  }
+
+  async queueBuild(
+    orgUrl: string,
+    project: string,
+    definitionId: number,
+    options: {
+      sourceBranch?: string;
+      parameters?: Record<string, string> | string;
+      variables?: Record<string, string>;
+    }
+  ): Promise<RelayBuildDetails> {
+    const url = new URL(`${encodeURIComponent(project)}/_apis/build/builds`, normalizeOrgUrl(orgUrl));
+    url.searchParams.set("api-version", "7.1");
+    this.ensureAuth();
+
+    const body: AdoQueueBuildRequest = {
+      definition: { id: definitionId }
+    };
+    if (options.sourceBranch) {
+      body.sourceBranch = options.sourceBranch;
+    }
+    if (typeof options.parameters === "string") {
+      body.parameters = options.parameters;
+    } else if (options.parameters && Object.keys(options.parameters).length > 0) {
+      body.parameters = JSON.stringify(options.parameters);
+    }
+    if (options.variables && Object.keys(options.variables).length > 0) {
+      body.variables = Object.fromEntries(
+        Object.entries(options.variables).map(([name, value]) => [name, { value }])
+      );
+    }
+
+    const auth = Buffer.from(`:${this.token ?? ""}`, "utf8").toString("base64");
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${auth}`,
+        Accept: "application/json",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+      const responseText = await response.text();
+      const trimmed = responseText.trim();
+      const detail = trimmed ? `: ${trimmed}` : "";
+      throw new RelayHttpError(`ADO queue request failed (${response.status}) for ${url}${detail}`, response.status, url.toString(), trimmed || undefined);
+    }
+
+    const payload = await response.json() as AdoBuild;
+    return {
+      ...mapBuildSummary(payload),
+      projectName: payload.project?.name ?? project,
+      repository: payload.repository?.name,
+      reason: payload.reason,
+      cached: false,
+      lastRefresh: new Date().toISOString()
+    };
   }
 
   async getTimeline(orgUrl: string, project: string, buildId: number): Promise<RelayTimelineNode[]> {
@@ -330,6 +411,47 @@ interface AdoDefinitionsResponse {
   }>;
 }
 
+interface AdoDefinition {
+  id: number;
+  name: string;
+  path?: string;
+  revision?: number;
+  queueStatus?: string;
+  variables?: Record<string, AdoDefinitionVariable>;
+  processParameters?: {
+    inputs?: AdoProcessInput[];
+  };
+  repository?: {
+    type?: string;
+    name?: string;
+    defaultBranch?: string;
+  };
+}
+
+interface AdoDefinitionVariable {
+  value?: string;
+  allowOverride?: boolean;
+  isSecret?: boolean;
+}
+
+interface AdoProcessInput {
+  name?: string;
+  type?: string;
+  label?: string;
+  defaultValue?: unknown;
+  required?: boolean;
+  options?: Record<string, string> | string[];
+}
+
+interface AdoQueueBuildRequest {
+  definition: {
+    id: number;
+  };
+  sourceBranch?: string;
+  parameters?: string;
+  variables?: Record<string, { value: string }>;
+}
+
 interface AdoBuild {
   id: number;
   buildNumber: string;
@@ -354,6 +476,57 @@ interface AdoBuild {
   requestedFor?: {
     displayName?: string;
   };
+}
+
+function mapDefinitionVariables(
+  variables?: Record<string, AdoDefinitionVariable>
+): RelayDefinitionVariable[] {
+  return Object.entries(variables ?? {})
+    .map(([name, variable]) => ({
+      name,
+      value: variable.value,
+      allowOverride: Boolean(variable.allowOverride),
+      isSecret: Boolean(variable.isSecret)
+    }))
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function mapDefinitionParameters(
+  processParameters?: { inputs?: AdoProcessInput[] }
+): RelayDefinitionParameter[] {
+  return (processParameters?.inputs ?? [])
+    .filter((input) => typeof input.name === "string" && input.name)
+    .map((input) => ({
+      name: input.name ?? "",
+      type: input.type,
+      label: input.label,
+      defaultValue: stringifyProcessInputValue(input.defaultValue),
+      required: Boolean(input.required),
+      options: mapDefinitionParameterOptions(input.options)
+    }))
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function mapDefinitionParameterOptions(
+  options?: Record<string, string> | string[]
+): RelayDefinitionParameterOption[] {
+  if (Array.isArray(options)) {
+    return options.map((value) => ({ label: value, value }));
+  }
+  return Object.entries(options ?? {}).map(([value, label]) => ({
+    value,
+    label: label || value
+  }));
+}
+
+function stringifyProcessInputValue(value: unknown): string | undefined {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  return String(value);
 }
 
 interface AdoTimelineResponse {

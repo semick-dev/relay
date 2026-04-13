@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.8
+
+- Add queue capabilities to the `build list` (EGviewing a build definition) pane
+
 ## 0.0.7
 
 - Fix various alignment and spacing issues across all panels
