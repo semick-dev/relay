@@ -661,7 +661,7 @@ input:focus {
 .detail-pane,
 .task-pane {
   display: grid;
-  gap: var(--space-3);
+  gap: 0;
 }
 
 .detail-pane--placeholder {
@@ -698,6 +698,66 @@ input:focus {
 .definition-builds-meta {
   font-size: 0.82rem;
   margin-bottom: 4px;
+}
+
+.definition-builds-tabs {
+  display: flex;
+  gap: 0;
+  flex-wrap: wrap;
+  align-items: end;
+}
+
+.definition-builds-tabpanel {
+  display: grid;
+  gap: 12px;
+  min-height: 0;
+  border: 1px solid var(--border-0);
+  background: var(--card-bg);
+  padding: 0 14px 14px;
+}
+
+.definition-build-list {
+  max-height: min(52vh, 680px);
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.definition-builds-placeholder {
+  min-height: 280px;
+  padding-top: 14px;
+}
+
+.definition-builds-tabpanel .filter-row,
+.definition-builds-tabpanel .definition-build-list {
+  margin-top: 14px;
+}
+
+.detail-pane > .selector-shell,
+.detail-pane > .definition-builds-meta {
+  margin-bottom: 14px;
+}
+
+.definition-builds-tabs .filter-chip {
+  border-radius: 0;
+  margin-bottom: -1px;
+  position: relative;
+}
+
+.definition-builds-tabs .filter-chip + .filter-chip {
+  margin-left: -1px;
+}
+
+.definition-builds-tabs .filter-chip.is-active {
+  background: var(--card-bg);
+  color: var(--fg-0);
+  border-color: var(--border-0);
+  border-bottom-color: var(--card-bg);
+}
+
+.definition-builds-tabs .filter-chip:not(.is-active) {
+  background: var(--button-ghost-bg);
+  border-color: var(--border-0);
+  color: var(--fg-2);
 }
 
 .selector-row {

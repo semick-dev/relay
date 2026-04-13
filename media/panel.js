@@ -12,6 +12,7 @@
     definitionsLoading: false,
     definitionBuildsLoading: false,
     definitionBuildsRequestId: 0,
+    definitionBuildsTab: "list",
     definitionFilter: "",
     definitionBuilds: [],
     definitionBuildsMeta: null,
@@ -421,13 +422,25 @@
         ${escapeHtml(String(state.definitionBuildsMeta?.builds?.length ?? state.definitionBuilds.length))} builds ·
         ${escapeHtml(formatDate(state.definitionBuildsMeta?.lastRefresh))}
       </div>
-      <div class="filter-row">
-        <button class="filter-chip ${state.buildFilter === "all" ? "is-active" : ""}" data-filter="all">All</button>
-        <button class="filter-chip ${state.buildFilter === "inProgress" ? "is-active" : ""}" data-filter="inProgress">In Progress</button>
-        <button class="filter-chip ${state.buildFilter === "failed" ? "is-active" : ""}" data-filter="failed">Failed / Cancelled</button>
-        <button class="filter-chip ${state.buildFilter === "success" ? "is-active" : ""}" data-filter="success">Success</button>
+      <div class="definition-builds-tabs" role="tablist" aria-label="Definition tools">
+        <button class="filter-chip ${state.definitionBuildsTab === "list" ? "is-active" : ""}" data-definition-tab="list" role="tab" aria-selected="${state.definitionBuildsTab === "list"}">List Builds for Definition</button>
+        <button class="filter-chip ${state.definitionBuildsTab === "queue" ? "is-active" : ""}" data-definition-tab="queue" role="tab" aria-selected="${state.definitionBuildsTab === "queue"}">Queue Definition</button>
       </div>
-      <div id="definition-build-list" class="build-list"></div>
+      <div class="definition-builds-tabpanel">
+        ${state.definitionBuildsTab === "list" ? `
+          <div class="filter-row">
+            <button class="filter-chip ${state.buildFilter === "all" ? "is-active" : ""}" data-filter="all">All</button>
+            <button class="filter-chip ${state.buildFilter === "inProgress" ? "is-active" : ""}" data-filter="inProgress">In Progress</button>
+            <button class="filter-chip ${state.buildFilter === "failed" ? "is-active" : ""}" data-filter="failed">Failed / Cancelled</button>
+            <button class="filter-chip ${state.buildFilter === "success" ? "is-active" : ""}" data-filter="success">Success</button>
+          </div>
+          <div id="definition-build-list" class="build-list definition-build-list"></div>
+        ` : `
+          <div class="detail-pane detail-pane--placeholder definition-builds-placeholder">
+            <div class="empty-state">Queue Definition UI will land here next. This tab will be used for branch targeting, parameter editing, and queue-time variables.</div>
+          </div>
+        `}
+      </div>
     `;
     setDetailCachePill(state.definitionBuildsMeta?.cached, state.definitionBuildsMeta?.lastRefresh, "Refresh build list");
 
@@ -440,6 +453,12 @@
         void applyDefinitionSelection();
       }
     });
+    for (const button of elements.detailBody.querySelectorAll("[data-definition-tab]")) {
+      button.addEventListener("click", () => {
+        state.definitionBuildsTab = button.getAttribute("data-definition-tab");
+        renderDefinitionBuildsPane();
+      });
+    }
     for (const button of elements.detailBody.querySelectorAll("[data-filter]")) {
       button.addEventListener("click", () => {
         state.buildFilter = button.getAttribute("data-filter");
@@ -447,7 +466,9 @@
       });
     }
 
-    renderDefinitionBuildList();
+    if (state.definitionBuildsTab === "list") {
+      renderDefinitionBuildList();
+    }
   }
 
   function renderDefinitionBuildList() {
