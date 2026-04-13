@@ -130,7 +130,7 @@ export class RelayAdoClient {
     let parameterError: string | undefined;
     if (isYaml) {
       try {
-        parameters = await this.getYamlTemplateParameters(orgUrl, project, definitionId);
+        parameters = await this.getYamlTemplateParameters(orgUrl, project, definitionId, branch);
       } catch (error) {
         parameterError = error instanceof Error ? error.message : String(error);
       }
@@ -197,12 +197,22 @@ export class RelayAdoClient {
   private async getYamlTemplateParameters(
     orgUrl: string,
     project: string,
-    definitionId: number
+    definitionId: number,
+    sourceBranch?: string
   ): Promise<RelayDefinitionParameter[]> {
-    const url = new URL(`${encodeURIComponent(project)}/_apis/build/definitions/${definitionId}/yaml`, normalizeOrgUrl(orgUrl));
-    url.searchParams.set("api-version", "7.1-preview.1");
-    const yamlText = await this.requestText(url.toString());
-    return mapYamlDefinitionParameters(yamlText);
+    const url = new URL(`${encodeURIComponent(project)}/_apis/pipelines/${definitionId}/preview`, normalizeOrgUrl(orgUrl));
+    url.searchParams.set("api-version", "7.1");
+    const preview = await this.requestWithBodyJson<AdoPipelinePreview>(url.toString(), {
+      previewRun: true,
+      resources: sourceBranch ? {
+        repositories: {
+          self: {
+            refName: sourceBranch
+          }
+        }
+      } : undefined
+    });
+    return mapYamlDefinitionParameters(preview.finalYaml || "");
   }
 
   async getTimeline(orgUrl: string, project: string, buildId: number): Promise<RelayTimelineNode[]> {
@@ -534,6 +544,10 @@ interface AdoRunPipelineRequest {
 
 interface AdoPipelineRun {
   id: number;
+}
+
+interface AdoPipelinePreview {
+  finalYaml?: string;
 }
 
 interface AdoBuild {

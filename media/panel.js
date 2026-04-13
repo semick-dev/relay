@@ -720,9 +720,8 @@
         parameters: parameterMap,
         variables: variableMap
       }, { showBanner: false });
-      state.definitionQueueNotice = `Queued build #${response.build.id} · ${response.build.buildNumber}`;
       await loadDefinitionBuilds(state.selectedDefinition.id, true);
-      renderDefinitionBuildsPane();
+      await openBuild(response.build.id, false);
     } catch (error) {
       state.definitionQueueError = error?.message || String(error);
     } finally {
