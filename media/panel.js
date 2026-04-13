@@ -12,6 +12,17 @@
     definitionsLoading: false,
     definitionBuildsLoading: false,
     definitionBuildsRequestId: 0,
+    definitionBuildsTab: "list",
+    definitionQueueLoading: false,
+    definitionQueuePrepared: false,
+    definitionQueueRequestId: 0,
+    definitionQueueMetadata: null,
+    definitionQueueBranch: "",
+    definitionQueueParameters: [],
+    definitionQueueVariables: [],
+    definitionQueueRunning: false,
+    definitionQueueError: "",
+    definitionQueueNotice: "",
     definitionFilter: "",
     definitionBuilds: [],
     definitionBuildsMeta: null,
@@ -149,6 +160,7 @@
     state.selectedDefinition = definition;
     state.currentBuild = null;
     state.currentTask = null;
+    resetDefinitionQueueState();
     commitNavState({
       mode: "definitionBuilds",
       project: state.selectedProject,
@@ -421,13 +433,23 @@
         ${escapeHtml(String(state.definitionBuildsMeta?.builds?.length ?? state.definitionBuilds.length))} builds ·
         ${escapeHtml(formatDate(state.definitionBuildsMeta?.lastRefresh))}
       </div>
-      <div class="filter-row">
-        <button class="filter-chip ${state.buildFilter === "all" ? "is-active" : ""}" data-filter="all">All</button>
-        <button class="filter-chip ${state.buildFilter === "inProgress" ? "is-active" : ""}" data-filter="inProgress">In Progress</button>
-        <button class="filter-chip ${state.buildFilter === "failed" ? "is-active" : ""}" data-filter="failed">Failed / Cancelled</button>
-        <button class="filter-chip ${state.buildFilter === "success" ? "is-active" : ""}" data-filter="success">Success</button>
+      <div class="definition-builds-tabs" role="tablist" aria-label="Definition tools">
+        <button class="filter-chip ${state.definitionBuildsTab === "list" ? "is-active" : ""}" data-definition-tab="list" role="tab" aria-selected="${state.definitionBuildsTab === "list"}">List Builds for Definition</button>
+        <button class="filter-chip ${state.definitionBuildsTab === "queue" ? "is-active" : ""}" data-definition-tab="queue" role="tab" aria-selected="${state.definitionBuildsTab === "queue"}">Queue Definition</button>
       </div>
-      <div id="definition-build-list" class="build-list"></div>
+      <div class="definition-builds-tabpanel">
+        ${state.definitionBuildsTab === "list" ? `
+          <div class="filter-row">
+            <button class="filter-chip ${state.buildFilter === "all" ? "is-active" : ""}" data-filter="all">All</button>
+            <button class="filter-chip ${state.buildFilter === "inProgress" ? "is-active" : ""}" data-filter="inProgress">In Progress</button>
+            <button class="filter-chip ${state.buildFilter === "failed" ? "is-active" : ""}" data-filter="failed">Failed / Cancelled</button>
+            <button class="filter-chip ${state.buildFilter === "success" ? "is-active" : ""}" data-filter="success">Success</button>
+          </div>
+          <div id="definition-build-list" class="build-list definition-build-list"></div>
+        ` : `
+          ${renderDefinitionQueueTab()}
+        `}
+      </div>
     `;
     setDetailCachePill(state.definitionBuildsMeta?.cached, state.definitionBuildsMeta?.lastRefresh, "Refresh build list");
 
@@ -440,6 +462,13 @@
         void applyDefinitionSelection();
       }
     });
+    for (const button of elements.detailBody.querySelectorAll("[data-definition-tab]")) {
+      button.addEventListener("click", () => {
+        state.definitionBuildsTab = button.getAttribute("data-definition-tab");
+        state.definitionQueueError = "";
+        renderDefinitionBuildsPane();
+      });
+    }
     for (const button of elements.detailBody.querySelectorAll("[data-filter]")) {
       button.addEventListener("click", () => {
         state.buildFilter = button.getAttribute("data-filter");
@@ -447,7 +476,285 @@
       });
     }
 
-    renderDefinitionBuildList();
+    if (state.definitionBuildsTab === "list") {
+      renderDefinitionBuildList();
+    } else {
+      bindDefinitionQueueTab();
+    }
+  }
+
+  function renderDefinitionQueueTab() {
+    return `
+      <div class="queue-definition">
+        <div class="queue-definition__intro muted">Provide a branch or PR merge ref, then prepare the queue inputs for this definition.</div>
+        <div class="queue-definition__branch-row">
+          <textarea id="queue-branch-input" class="queue-definition__textarea queue-definition__textarea--single" placeholder="refs/heads/main or refs/pull/123/merge"${state.definitionQueueLoading || state.definitionQueueRunning ? " disabled" : ""}>${escapeHtml(state.definitionQueueBranch)}</textarea>
+          <button id="queue-prepare-button" class="button button--primary"${state.definitionQueueLoading || state.definitionQueueRunning ? " disabled" : ""}>${state.definitionQueueLoading ? "Preparing..." : "Prepare for Queue"}</button>
+        </div>
+        ${state.definitionQueuePrepared && state.definitionQueueMetadata && !state.definitionQueueMetadata.isYaml ? `
+          <div class="empty-state empty-state--compact">Only YAML-backed definitions are supported for queueing.</div>
+        ` : ""}
+        ${state.definitionQueuePrepared && state.definitionQueueMetadata?.parameterError ? renderDismissibleMessage("queue-parameter-error", state.definitionQueueMetadata.parameterError, "error") : ""}
+        ${state.definitionQueueLoading ? `
+          <div class="detail-pane detail-pane--loading definition-builds-placeholder">
+            <div class="loading-state">
+              <span class="spinner loading-state__spinner"></span>
+              <div class="loading-state__label">Loading queue metadata...</div>
+            </div>
+          </div>
+        ` : ""}
+        ${state.definitionQueuePrepared && !state.definitionQueueLoading && state.definitionQueueMetadata?.isYaml ? `
+          <div class="queue-definition__section">
+            <div class="section-title">Parameters</div>
+            <div class="queue-definition__fields">
+              ${state.definitionQueueParameters.length
+                ? state.definitionQueueParameters.map((parameter, index) => `
+                  <label class="queue-definition__field">
+                    <span class="eyebrow">${escapeHtml(parameter.name)}</span>
+                    <textarea class="queue-definition__textarea" data-queue-parameter-index="${index}" placeholder="${escapeAttr(parameter.label || parameter.name)}">${escapeHtml(parameter.value || "")}</textarea>
+                  </label>
+                `).join("")
+                : '<div class="empty-state empty-state--compact">No queue parameters exposed for this definition.</div>'}
+            </div>
+          </div>
+          <div class="queue-definition__section">
+            <div class="section-title">
+              <span>Variables</span>
+              <button id="queue-add-variable" class="button button--ghost" type="button">Add Variable</button>
+            </div>
+            <div class="queue-definition__variable-list">
+              ${state.definitionQueueVariables.map((variable, index) => `
+                <div class="queue-definition__variable-row">
+                  <textarea class="queue-definition__textarea queue-definition__textarea--single" data-queue-variable-name-index="${index}" placeholder="Variable name">${escapeHtml(variable.name || "")}</textarea>
+                  <textarea class="queue-definition__textarea queue-definition__textarea--single" data-queue-variable-value-index="${index}" placeholder="Variable value">${escapeHtml(variable.value || "")}</textarea>
+                  <button class="button button--ghost" type="button" data-queue-variable-remove-index="${index}">Remove</button>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+          <div class="queue-definition__actions">
+            <button id="queue-run-button" class="button button--primary queue-definition__run"${state.definitionQueueRunning ? " disabled" : ""}>${state.definitionQueueRunning ? "Queueing..." : "Run"}</button>
+          </div>
+        ` : ""}
+        ${state.definitionQueueNotice ? renderDismissibleMessage("queue-notice", state.definitionQueueNotice, "success") : ""}
+        ${state.definitionQueueError ? `
+          <div id="queue-error" class="queue-definition__error">
+            <button id="queue-error-close" class="message-close" type="button" aria-label="Close error">×</button>
+            <pre class="queue-definition__error-body">${escapeHtml(state.definitionQueueError)}</pre>
+          </div>
+        ` : ""}
+      </div>
+    `;
+  }
+
+  function bindDefinitionQueueTab() {
+    const branchInput = document.getElementById("queue-branch-input");
+    if (branchInput) {
+      branchInput.addEventListener("input", () => {
+        state.definitionQueueBranch = branchInput.value;
+        clearDefinitionQueueFeedback();
+      });
+      branchInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault();
+          void prepareDefinitionQueue();
+        }
+      });
+    }
+
+    const prepareButton = document.getElementById("queue-prepare-button");
+    if (prepareButton) {
+      prepareButton.addEventListener("click", () => {
+        void prepareDefinitionQueue();
+      });
+    }
+
+    const addVariableButton = document.getElementById("queue-add-variable");
+    if (addVariableButton) {
+      addVariableButton.addEventListener("click", () => {
+        state.definitionQueueVariables.push({ name: "", value: "" });
+        clearDefinitionQueueFeedback();
+        renderDefinitionBuildsPane();
+      });
+    }
+
+    const runButton = document.getElementById("queue-run-button");
+    if (runButton) {
+      runButton.addEventListener("click", () => {
+        void runDefinitionQueue();
+      });
+    }
+
+    for (const textarea of elements.detailBody.querySelectorAll("[data-queue-parameter-index]")) {
+      textarea.addEventListener("input", () => {
+        const index = Number(textarea.getAttribute("data-queue-parameter-index"));
+        if (Number.isFinite(index) && state.definitionQueueParameters[index]) {
+          state.definitionQueueParameters[index].value = textarea.value;
+          clearDefinitionQueueFeedback();
+        }
+      });
+    }
+
+    for (const textarea of elements.detailBody.querySelectorAll("[data-queue-variable-name-index]")) {
+      textarea.addEventListener("input", () => {
+        const index = Number(textarea.getAttribute("data-queue-variable-name-index"));
+        if (Number.isFinite(index) && state.definitionQueueVariables[index]) {
+          state.definitionQueueVariables[index].name = textarea.value;
+          clearDefinitionQueueFeedback();
+        }
+      });
+    }
+
+    for (const textarea of elements.detailBody.querySelectorAll("[data-queue-variable-value-index]")) {
+      textarea.addEventListener("input", () => {
+        const index = Number(textarea.getAttribute("data-queue-variable-value-index"));
+        if (Number.isFinite(index) && state.definitionQueueVariables[index]) {
+          state.definitionQueueVariables[index].value = textarea.value;
+          clearDefinitionQueueFeedback();
+        }
+      });
+    }
+
+    for (const button of elements.detailBody.querySelectorAll("[data-queue-variable-remove-index]")) {
+      button.addEventListener("click", () => {
+        const index = Number(button.getAttribute("data-queue-variable-remove-index"));
+        if (Number.isFinite(index)) {
+          state.definitionQueueVariables.splice(index, 1);
+          clearDefinitionQueueFeedback();
+          renderDefinitionBuildsPane();
+        }
+      });
+    }
+
+    const queueErrorClose = document.getElementById("queue-error-close");
+    if (queueErrorClose) {
+      queueErrorClose.addEventListener("click", () => {
+        state.definitionQueueError = "";
+        renderDefinitionBuildsPane();
+      });
+    }
+
+    const queueParameterErrorClose = document.getElementById("queue-parameter-error-close");
+    if (queueParameterErrorClose) {
+      queueParameterErrorClose.addEventListener("click", () => {
+        if (state.definitionQueueMetadata) {
+          state.definitionQueueMetadata.parameterError = "";
+          renderDefinitionBuildsPane();
+        }
+      });
+    }
+
+    const queueNoticeClose = document.getElementById("queue-notice-close");
+    if (queueNoticeClose) {
+      queueNoticeClose.addEventListener("click", () => {
+        state.definitionQueueNotice = "";
+        renderDefinitionBuildsPane();
+      });
+    }
+  }
+
+  async function prepareDefinitionQueue() {
+    if (!state.selectedDefinition) {
+      return;
+    }
+    const requestId = state.definitionQueueRequestId + 1;
+    state.definitionQueueRequestId = requestId;
+    state.definitionQueuePrepared = false;
+    state.definitionQueueLoading = true;
+    state.definitionQueueError = "";
+    state.definitionQueueNotice = "";
+    renderDefinitionBuildsPane();
+    try {
+      const sourceBranch = state.definitionQueueBranch.trim();
+      const response = await apiGet(`/api/projects/${encodeURIComponent(state.selectedProject)}/definitions/${state.selectedDefinition.id}/queue-metadata?orgUrl=${encodeURIComponent(state.orgUrl)}${sourceBranch ? `&sourceBranch=${encodeURIComponent(sourceBranch)}` : ""}`, { showBanner: false });
+      if (state.definitionQueueRequestId !== requestId) {
+        return;
+      }
+      state.definitionQueueMetadata = response.definition;
+      state.definitionQueuePrepared = true;
+      if (!state.definitionQueueBranch && response.definition.defaultBranch) {
+        state.definitionQueueBranch = response.definition.defaultBranch;
+      }
+      state.definitionQueueParameters = (response.definition.parameters || []).map((parameter) => ({
+        name: parameter.name,
+        value: parameter.defaultValue || "",
+        label: parameter.label || parameter.name
+      }));
+      state.definitionQueueVariables = (response.definition.variables || []).map((variable) => ({
+        name: variable.name,
+        value: variable.value || ""
+      }));
+    } catch (error) {
+      if (state.definitionQueueRequestId === requestId) {
+        state.definitionQueueError = error?.message || String(error);
+      }
+    } finally {
+      if (state.definitionQueueRequestId === requestId) {
+        state.definitionQueueLoading = false;
+        renderDefinitionBuildsPane();
+      }
+    }
+  }
+
+  async function runDefinitionQueue() {
+    if (!state.selectedDefinition) {
+      return;
+    }
+    state.definitionQueueRunning = true;
+    state.definitionQueueError = "";
+    state.definitionQueueNotice = "";
+    renderDefinitionBuildsPane();
+    try {
+      const parameterMap = Object.fromEntries(
+        state.definitionQueueParameters
+          .filter((parameter) => parameter.name)
+          .map((parameter) => [parameter.name, parameter.value || ""])
+      );
+      const variableMap = Object.fromEntries(
+        state.definitionQueueVariables
+          .filter((variable) => variable.name.trim())
+          .map((variable) => [variable.name.trim(), variable.value || ""])
+      );
+      const response = await apiPost(`/api/projects/${encodeURIComponent(state.selectedProject)}/definitions/${state.selectedDefinition.id}/queue?orgUrl=${encodeURIComponent(state.orgUrl)}`, {
+        sourceBranch: state.definitionQueueBranch.trim() || undefined,
+        parameters: parameterMap,
+        variables: variableMap
+      }, { showBanner: false });
+      await loadDefinitionBuilds(state.selectedDefinition.id, true);
+      await openBuild(response.build.id, false);
+    } catch (error) {
+      state.definitionQueueError = error?.message || String(error);
+    } finally {
+      state.definitionQueueRunning = false;
+      renderDefinitionBuildsPane();
+    }
+  }
+
+  function clearDefinitionQueueFeedback() {
+    state.definitionQueueError = "";
+    state.definitionQueueNotice = "";
+    const error = document.getElementById("queue-error");
+    if (error) {
+      error.remove();
+    }
+    const notice = document.getElementById("queue-notice");
+    if (notice) {
+      notice.remove();
+    }
+  }
+
+  function resetDefinitionQueueState() {
+    state.definitionBuildsTab = "list";
+    state.definitionQueueLoading = false;
+    state.definitionQueuePrepared = false;
+    state.definitionQueueRequestId = 0;
+    state.definitionQueueMetadata = null;
+    state.definitionQueueBranch = "";
+    state.definitionQueueParameters = [];
+    state.definitionQueueVariables = [];
+    state.definitionQueueRunning = false;
+    state.definitionQueueError = "";
+    state.definitionQueueNotice = "";
   }
 
   function renderDefinitionBuildList() {
@@ -1104,18 +1411,20 @@
     return regex.test(value);
   }
 
-  async function apiGet(path) {
+  async function apiGet(path, options = {}) {
     const response = await fetch(`${bootstrap.apiBase}${path}`);
     const payload = await response.json();
     if (!response.ok || payload.ok === false) {
       const message = payload.error || `Request failed with ${response.status}`;
-      renderBanner(message);
+      if (options.showBanner !== false) {
+        renderBanner(message);
+      }
       throw new Error(message);
     }
     return payload;
   }
 
-  async function apiPost(path, body) {
+  async function apiPost(path, body, options = {}) {
     const response = await fetch(`${bootstrap.apiBase}${path}`, {
       method: "POST",
       headers: {
@@ -1126,7 +1435,9 @@
     const payload = await response.json();
     if (!response.ok || payload.ok === false) {
       const message = payload.error || `Request failed with ${response.status}`;
-      renderBanner(message);
+      if (options.showBanner !== false) {
+        renderBanner(message);
+      }
       throw new Error(message);
     }
     return payload;
@@ -1163,8 +1474,28 @@
 
   function renderBanner(message) {
     elements.messageBanner.innerHTML = message
-      ? `<div class="banner">${escapeHtml(message)}</div>`
+      ? renderDismissibleMessage("global-banner", message, "default")
       : "";
+    const close = document.getElementById("global-banner-close");
+    if (close) {
+      close.addEventListener("click", () => {
+        renderBanner("");
+      });
+    }
+  }
+
+  function renderDismissibleMessage(id, message, kind) {
+    const className = kind === "success"
+      ? "banner banner--success"
+      : kind === "error"
+        ? "banner banner--error"
+        : "banner";
+    return `
+      <div id="${escapeAttr(id)}" class="${className}">
+        <div class="banner__body">${escapeHtml(message)}</div>
+        <button id="${escapeAttr(`${id}-close`)}" class="message-close" type="button" aria-label="Close message">×</button>
+      </div>
+    `;
   }
 
   function setMainCachePill(cached, lastRefresh, title) {

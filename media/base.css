@@ -527,6 +527,10 @@ input:focus {
 }
 
 .banner {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
   margin-bottom: var(--space-3);
   padding: 12px 14px;
   border-radius: 0;
@@ -534,9 +538,37 @@ input:focus {
   background: var(--banner-bg);
 }
 
+.banner__body {
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .banner--success {
   border-color: rgba(52, 211, 153, 0.35);
   background: rgba(52, 211, 153, 0.08);
+}
+
+.banner--error {
+  border-color: rgba(251, 113, 133, 0.35);
+  background: rgba(251, 113, 133, 0.08);
+  color: #fecdd3;
+}
+
+.message-close {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0.8;
+}
+
+.message-close:hover {
+  opacity: 1;
+  transform: none;
 }
 
 .detail-grid {
@@ -661,7 +693,7 @@ input:focus {
 .detail-pane,
 .task-pane {
   display: grid;
-  gap: var(--space-3);
+  gap: 0;
 }
 
 .detail-pane--placeholder {
@@ -698,6 +730,147 @@ input:focus {
 .definition-builds-meta {
   font-size: 0.82rem;
   margin-bottom: 4px;
+}
+
+.definition-builds-tabs {
+  display: flex;
+  gap: 0;
+  flex-wrap: wrap;
+  align-items: end;
+}
+
+.definition-builds-tabpanel {
+  display: grid;
+  gap: 12px;
+  min-height: 0;
+  border: 1px solid var(--border-0);
+  background: var(--card-bg);
+  padding: 0 14px 14px;
+}
+
+.definition-build-list {
+  max-height: min(52vh, 680px);
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.definition-builds-placeholder {
+  min-height: 280px;
+  padding-top: 14px;
+}
+
+.definition-builds-tabpanel .filter-row,
+.definition-builds-tabpanel .definition-build-list {
+  margin-top: 14px;
+}
+
+.detail-pane > .selector-shell,
+.detail-pane > .definition-builds-meta {
+  margin-bottom: 14px;
+}
+
+.definition-builds-tabs .filter-chip {
+  border-radius: 0;
+  margin-bottom: -1px;
+  position: relative;
+}
+
+.definition-builds-tabs .filter-chip + .filter-chip {
+  margin-left: -1px;
+}
+
+.definition-builds-tabs .filter-chip.is-active {
+  background: var(--card-bg);
+  color: var(--fg-0);
+  border-color: var(--border-0);
+  border-bottom-color: var(--card-bg);
+}
+
+.definition-builds-tabs .filter-chip:not(.is-active) {
+  background: var(--button-ghost-bg);
+  border-color: var(--border-0);
+  color: var(--fg-2);
+}
+
+.queue-definition {
+  display: grid;
+  gap: 14px;
+}
+
+.queue-definition__intro {
+  font-size: 0.9rem;
+}
+
+.queue-definition__branch-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+}
+
+.queue-definition__section {
+  display: grid;
+  gap: 10px;
+}
+
+.queue-definition__fields,
+.queue-definition__variable-list {
+  display: grid;
+  gap: 10px;
+}
+
+.queue-definition__field {
+  display: grid;
+  gap: 6px;
+}
+
+.queue-definition__variable-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.8fr) minmax(0, 1.2fr) auto;
+  gap: 10px;
+  align-items: start;
+}
+
+.queue-definition__textarea {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+}
+
+.queue-definition__textarea--single {
+  min-height: 46px;
+}
+
+.queue-definition__actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.queue-definition__run {
+  min-width: 180px;
+}
+
+.queue-definition__error {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid rgba(251, 113, 133, 0.35);
+  background: rgba(251, 113, 133, 0.08);
+  color: #fecdd3;
+}
+
+.queue-definition__error .message-close {
+  justify-self: end;
+}
+
+.queue-definition__error-body {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.5;
 }
 
 .selector-row {

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.8
+
+- Add queue capabilities to the `build list` (EGviewing a build definition) pane
+  - This mode is simply first pass at this point. Need to properly parse yaml -> convert to JSON automagically etc etc etc. I cbf to deal with it rn
+
 ## 0.0.7
 
 - Fix various alignment and spacing issues across all panels

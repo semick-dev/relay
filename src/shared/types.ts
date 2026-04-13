@@ -141,6 +141,42 @@ export interface RelayDefinitionSummary {
   };
 }
 
+export interface RelayDefinitionVariable {
+  name: string;
+  value?: string;
+  allowOverride: boolean;
+  isSecret: boolean;
+}
+
+export interface RelayDefinitionParameterOption {
+  label: string;
+  value: string;
+}
+
+export interface RelayDefinitionParameter {
+  name: string;
+  type?: string;
+  label?: string;
+  defaultValue?: string;
+  required: boolean;
+  options: RelayDefinitionParameterOption[];
+}
+
+export interface RelayDefinitionQueueMetadata {
+  id: number;
+  name: string;
+  path: string;
+  isYaml: boolean;
+  yamlFilename?: string;
+  parameterError?: string;
+  queueStatus?: string;
+  defaultBranch?: string;
+  repositoryType?: string;
+  repositoryName?: string;
+  parameters: RelayDefinitionParameter[];
+  variables: RelayDefinitionVariable[];
+}
+
 export interface ProjectsResponse {
   ok: true;
   projects: RelayProject[];
@@ -167,6 +203,23 @@ export interface DefinitionsResponse {
   definitions: RelayDefinitionSummary[];
   cached: boolean;
   lastRefresh: string;
+}
+
+export interface DefinitionQueueMetadataResponse {
+  ok: true;
+  projectName: string;
+  definition: RelayDefinitionQueueMetadata;
+}
+
+export interface QueueBuildRequest {
+  sourceBranch?: string;
+  parameters?: Record<string, unknown>;
+  variables?: Record<string, string>;
+}
+
+export interface QueueBuildResponse {
+  ok: true;
+  build: RelayBuildDetails;
 }
 
 export interface DefinitionsPrecacheStatusResponse {
