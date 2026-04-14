@@ -16,6 +16,7 @@
   "files": [
     "out/**",
     "media/**",
+    "node_modules/yaml/**",
     "README.md",
     "CHANGELOG.md",
     "LICENSE",
@@ -36,9 +37,7 @@
     "webview"
   ],
   "icon": "media/icon.png",
-  "activationEvents": [
-    "onView:relay.sidebar"
-  ],
+  "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
     "viewsContainers": {
