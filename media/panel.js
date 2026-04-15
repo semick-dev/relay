@@ -24,9 +24,12 @@
     definitionQueueError: "",
     definitionQueueNotice: "",
     definitionFilter: "",
+    definitionTreeExpanded: {},
     definitionBuilds: [],
     definitionBuildsMeta: null,
     buildFilter: "all",
+    currentTaskFilter: "",
+    timelineTreeExpanded: {},
     currentBuildLoading: false,
     currentBuildRequestId: 0,
     currentBuild: null,
@@ -124,6 +127,8 @@
     state.selectedDefinition = null;
     state.currentBuild = null;
     state.definitionBuilds = [];
+    state.definitionTreeExpanded = {};
+    state.timelineTreeExpanded = {};
     setTitle(`Azure DevOps Relay: ${project}`);
 
     if (view === "artifacts") {
@@ -219,6 +224,7 @@
     state.currentTask = null;
     state.currentTimeline = [];
     state.currentTimelineMeta = null;
+    state.timelineTreeExpanded = {};
     state.currentArtifacts = [];
     state.artifactNotice = "";
     commitNavState({
@@ -390,19 +396,36 @@
   }
 
   function renderDefinitionsTree() {
-    const filtered = state.definitions.filter((definition) => matchesWildcard(definition.name, state.definitionFilter));
-    const tree = buildDefinitionTree(filtered);
+    const definitionTree = buildDefinitionTreeNodes(state.definitions);
+    const filteredTree = projectTree(
+      definitionTree,
+      state.definitionFilter,
+      (node) => node.kind === "definition" && matchesWildcard(node.definition.name, state.definitionFilter)
+    );
     elements.buildList.className = "definition-tree";
-    elements.buildList.innerHTML = tree || '<div class="empty-state">No definitions match the current filter.</div>';
-    for (const button of elements.buildList.querySelectorAll("[data-definition-id]")) {
-      button.addEventListener("click", () => {
-        const definition = resolveDefinitionReference(button.getAttribute("data-definition-id"));
-        if (definition) {
-          void openDefinition(definition, false);
+    elements.buildList.innerHTML = filteredTree.nodes.length
+      ? renderTreeNodes(filteredTree.nodes, {
+          treeType: "definitions",
+          expandedState: state.definitionTreeExpanded,
+          autoExpandedIds: filteredTree.autoExpandedIds,
+          defaultExpanded: (node) => node.kind === "definitions-root",
+          renderRow: renderDefinitionTreeRow
+        })
+      : '<div class="empty-state">No definitions match the current filter.</div>';
+    bindTreeInteractions(elements.buildList, {
+      treeType: "definitions",
+      expandedState: state.definitionTreeExpanded,
+      autoExpandedIds: filteredTree.autoExpandedIds,
+      defaultExpanded: (node) => node.kind === "definitions-root",
+      findNode: (id) => findTreeNodeById(filteredTree.nodes, id),
+      onActivate: (node) => {
+        if (node.kind === "definition") {
+          void openDefinition(node.definition, false);
         }
-      });
-    }
-    elements.mainStatus.textContent = `${state.selectedProject} · ${filtered.length} definitions`;
+      },
+      rerender: () => renderDefinitionsTree()
+    });
+    elements.mainStatus.textContent = `${state.selectedProject} · ${filteredTree.matchCount} definitions`;
   }
 
   function renderDefinitionBuildsPane() {
@@ -870,25 +893,14 @@
           <h3>Build Timeline</h3>
           <span class="muted">${escapeHtml(state.currentTimelineMeta?.cached ? "cached timeline" : "fresh timeline")}</span>
         </div>
-        <div class="task-tree">${renderTimelineTree(state.currentTimeline)}</div>
+        <div id="task-tree" class="task-tree"></div>
       </section>
     `;
     document.getElementById("build-page-back").addEventListener("click", () => history.back());
     document.getElementById("build-artifacts-button").addEventListener("click", () => {
       void loadArtifacts(false);
     });
-    for (const button of elements.buildList.querySelectorAll("[data-task-name][data-log-id]")) {
-      button.addEventListener("click", () => {
-        void openTaskPane(
-          button.getAttribute("data-task-name"),
-          Number(button.getAttribute("data-log-id")),
-          Number(button.getAttribute("data-log-lines") || "0"),
-          button.getAttribute("data-task-status-class") || "task-row__dot--neutral",
-          button.getAttribute("data-task-start-time") || "",
-          button.getAttribute("data-task-finish-time") || ""
-        );
-      });
-    }
+    renderTimelineSection();
   }
 
   function clearBuildPageChrome() {
@@ -1155,33 +1167,46 @@
     elements.buildList.innerHTML = "Artifacts view is planned but not implemented yet.";
   }
 
-  function renderTimelineTree(nodes, depth = 0, lineage = []) {
-    if (!nodes.length) {
-      return '<div class="empty-state">No timeline records returned for this build.</div>';
+  function renderTimelineSection() {
+    const host = document.getElementById("task-tree");
+    if (!host) {
+      return;
     }
-    return nodes.map((node, index) => {
-      const type = node.type.toLowerCase();
-      const statusClass = timelineStatusClass(node.result, node.state);
-      const statusLabel = compactTimelineStatus(node.result, node.state);
-      const connector = `${lineage.join("")}${index === nodes.length - 1 ? "└─" : "├─"}`;
-      const label = `
-        <span class="task-row__ascii">${escapeHtml(connector)}</span>
-        <span class="task-row__dot ${statusClass}"></span>
-        <span class="task-row__label">${escapeHtml(node.name)}</span>
-        <span class="task-row__meta">${escapeHtml(node.type)} · ${escapeHtml(statusLabel)}</span>
-      `;
-
-      const row = node.logId
-        ? `<button class="task-row" data-task-name="${escapeAttr(node.name)}" data-log-id="${node.logId}" data-log-lines="${node.logLineCount || 0}" data-task-status-class="${statusClass}" data-task-start-time="${escapeAttr(node.startTime || "")}" data-task-finish-time="${escapeAttr(node.finishTime || "")}">${label}</button>`
-        : `<div class="task-row task-row--static">${label}</div>`;
-
-      return `
-        <div class="task-tree-node">
-          ${row}
-          ${node.children.length ? `<div class="task-tree-node__children">${renderTimelineTree(node.children, depth + 1, [...lineage, index === nodes.length - 1 ? "  " : "│ "])}</div>` : ""}
-        </div>
-      `;
-    }).join("");
+    const timelineTree = buildTimelineTreeNodes(state.currentTimeline);
+    const filteredTree = projectTree(
+      timelineTree,
+      state.currentTaskFilter,
+      (node) => node.kind === "task" && matchesWildcard(node.timelineNode.name, state.currentTaskFilter)
+    );
+    host.innerHTML = filteredTree.nodes.length
+      ? renderTreeNodes(filteredTree.nodes, {
+          treeType: "timeline",
+          expandedState: state.timelineTreeExpanded,
+          autoExpandedIds: filteredTree.autoExpandedIds,
+          defaultExpanded: (node) => node.kind === "stage",
+          renderRow: renderTimelineTreeRow
+        })
+      : '<div class="empty-state">No timeline records returned for this build.</div>';
+    bindTreeInteractions(host, {
+      treeType: "timeline",
+      expandedState: state.timelineTreeExpanded,
+      autoExpandedIds: filteredTree.autoExpandedIds,
+      defaultExpanded: (node) => node.kind === "stage",
+      findNode: (id) => findTreeNodeById(filteredTree.nodes, id),
+      onActivate: (node) => {
+        if (node.kind === "task" && node.timelineNode.logId) {
+          void openTaskPane(
+            node.timelineNode.name,
+            node.timelineNode.logId,
+            node.timelineNode.logLineCount || 0,
+            timelineStatusClass(node.timelineNode.result, node.timelineNode.state),
+            node.timelineNode.startTime || "",
+            node.timelineNode.finishTime || ""
+          );
+        }
+      },
+      rerender: () => renderTimelineSection()
+    });
   }
 
   function timelineStatusClass(result, state) {
@@ -1341,79 +1366,236 @@
     return ` title="${escapeAttr(text)}"`;
   }
 
-  function buildDefinitionTree(definitions) {
-    const root = createFolderNode();
+  function buildDefinitionTreeNodes(definitions) {
+    const root = createDefinitionFolderNode("definitions-root", "All Matching Build Definitions");
     for (const definition of definitions) {
       const segments = definition.path.split("\\").filter(Boolean);
       let cursor = root;
+      let pathKey = "";
       for (const segment of segments) {
-        if (!cursor.folders[segment]) {
-          cursor.folders[segment] = createFolderNode();
+        pathKey = `${pathKey}/${segment}`;
+        let folderNode = cursor.children.find((child) => child.kind === "folder" && child.label === `${segment}/`);
+        if (!folderNode) {
+          folderNode = createDefinitionFolderNode(`folder:${pathKey}`, `${segment}/`);
+          cursor.children.push(folderNode);
         }
-        cursor = cursor.folders[segment];
+        cursor = folderNode;
       }
-      cursor.definitions.push(definition);
+      cursor.children.push({
+        id: `definition:${definition.id}`,
+        kind: "definition",
+        label: definition.name,
+        meta: `#${definition.id} · rev ${definition.revision} · ${definition.queueStatus || "enabled"}`,
+        children: [],
+        definition
+      });
     }
-    return `
-      <div class="definition-tree-node">
-        <div class="definition-row definition-row--folder">
-          <span class="definition-row__ascii">└─</span>
-          <span class="definition-row__label">All Matching Build Definitions</span>
-        </div>
-        <div class="definition-tree-node__children">
-          ${renderFolderNode(root, ["  "])}
-        </div>
-      </div>
-    `;
+    sortDefinitionTree(root);
+    return [root];
   }
 
-  function renderFolderNode(node, lineage) {
-    const folderEntries = Object.entries(node.folders)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([name, folder], index, all) => {
-        const connector = `${lineage.join("")}${index === all.length - 1 && node.definitions.length === 0 ? "└─" : "├─"}`;
-        const nextLineage = [...lineage, index === all.length - 1 && node.definitions.length === 0 ? "  " : "│ "];
-        return `
-          <div class="definition-tree-node">
-            <div class="definition-row definition-row--folder">
-              <span class="definition-row__ascii">${escapeHtml(connector)}</span>
-              <span class="definition-row__label">${escapeHtml(`${name}/`)}</span>
-            </div>
-            <div class="definition-tree-node__children">
-              ${renderFolderNode(folder, nextLineage)}
-            </div>
-          </div>
-        `;
-      })
-      .join("");
-
-    const definitionHtml = node.definitions
-      .sort((left, right) => left.name.localeCompare(right.name))
-      .map((definition, index, all) => definitionCard(
-        definition,
-        `${lineage.join("")}${index === all.length - 1 ? "└─" : "├─"}`
-      ))
-      .join("");
-
-    return `${folderEntries}${definitionHtml}`;
-  }
-
-  function definitionCard(definition, connector) {
-    const selected = state.selectedDefinition?.id === definition.id ? " is-active" : "";
-    return `
-      <button class="definition-row definition-row--item${selected}" data-definition-id="${definition.id}">
-        <span class="definition-row__ascii">${escapeHtml(connector)}</span>
-        <span class="definition-row__label">• ${escapeHtml(definition.name)}</span>
-        <span class="definition-row__meta">#${escapeHtml(String(definition.id))} · rev ${escapeHtml(String(definition.revision))} · ${escapeHtml(definition.queueStatus || "enabled")}</span>
-      </button>
-    `;
-  }
-
-  function createFolderNode() {
+  function createDefinitionFolderNode(id, label) {
     return {
-      folders: {},
-      definitions: []
+      id,
+      kind: id === "definitions-root" ? "definitions-root" : "folder",
+      label,
+      children: []
     };
+  }
+
+  function sortDefinitionTree(node) {
+    node.children.sort((left, right) => {
+      const leftOrder = left.kind === "definition" ? 1 : 0;
+      const rightOrder = right.kind === "definition" ? 1 : 0;
+      if (leftOrder !== rightOrder) {
+        return leftOrder - rightOrder;
+      }
+      return left.label.localeCompare(right.label);
+    });
+    for (const child of node.children) {
+      if (child.children.length) {
+        sortDefinitionTree(child);
+      }
+    }
+  }
+
+  function buildTimelineTreeNodes(nodes) {
+    return nodes.map((node) => ({
+      id: `timeline:${node.id}`,
+      kind: timelineNodeKind(node),
+      label: node.name,
+      meta: `${node.type} · ${compactTimelineStatus(node.result, node.state)}`,
+      statusClass: timelineStatusClass(node.result, node.state),
+      children: buildTimelineTreeNodes(node.children || []),
+      timelineNode: node
+    }));
+  }
+
+  function projectTree(nodes, filterText, matchesNode) {
+    if (!filterText || !String(filterText).trim()) {
+      return {
+        nodes,
+        autoExpandedIds: new Set(),
+        matchCount: countLeafNodes(nodes)
+      };
+    }
+
+    const autoExpandedIds = new Set();
+    let matchCount = 0;
+    const filteredNodes = nodes
+      .map((node) => projectTreeNode(node, filterText, matchesNode, autoExpandedIds, (count) => {
+        matchCount += count;
+      }))
+      .filter(Boolean);
+
+    return {
+      nodes: filteredNodes,
+      autoExpandedIds,
+      matchCount
+    };
+  }
+
+  function projectTreeNode(node, filterText, matchesNode, autoExpandedIds, onMatchCount) {
+    const childMatches = node.children
+      .map((child) => projectTreeNode(child, filterText, matchesNode, autoExpandedIds, onMatchCount))
+      .filter(Boolean);
+    const selfMatches = matchesNode(node, filterText);
+    if (selfMatches) {
+      onMatchCount(1);
+    }
+    if (!selfMatches && !childMatches.length) {
+      return null;
+    }
+    if (childMatches.length) {
+      autoExpandedIds.add(node.id);
+    }
+    return {
+      ...node,
+      children: childMatches
+    };
+  }
+
+  function renderTreeNodes(nodes, options, lineage = []) {
+    return nodes.map((node, index) => {
+      const connector = `${lineage.join("")}${index === nodes.length - 1 ? "└─" : "├─"}`;
+      const expanded = isTreeNodeExpanded(node, options.expandedState, options.autoExpandedIds, options.defaultExpanded);
+      const nextLineage = [...lineage, index === nodes.length - 1 ? "  " : "│ "];
+      return `
+        <div class="${options.treeType === "timeline" ? "task-tree-node" : "definition-tree-node"}">
+          ${options.renderRow(node, {
+            connector,
+            expanded,
+            hasChildren: node.children.length > 0
+          })}
+          ${node.children.length && expanded ? `<div class="${options.treeType === "timeline" ? "task-tree-node__children" : "definition-tree-node__children"}">${renderTreeNodes(node.children, options, nextLineage)}</div>` : ""}
+        </div>
+      `;
+    }).join("");
+  }
+
+  function renderDefinitionTreeRow(node, treeState) {
+    const selected = node.kind === "definition" && state.selectedDefinition?.id === node.definition.id ? " is-active" : "";
+    const rowClass = node.kind === "definition" ? "definition-row definition-row--item" : "definition-row definition-row--folder";
+    const toggleMarker = treeState.hasChildren ? (treeState.expanded ? "▾" : "▸") : "";
+    const role = treeState.hasChildren ? "toggle" : "activate";
+    const labelPrefix = node.kind === "definition" ? "• " : "";
+    const tag = node.kind === "definition" || treeState.hasChildren ? "button" : "div";
+    return `
+      <${tag} class="${rowClass}${selected}" data-tree-node-id="${escapeAttr(node.id)}" data-tree-role="${role}">
+        <span class="definition-row__ascii">${escapeHtml(`${treeState.connector}${toggleMarker ? ` ${toggleMarker}` : ""}`)}</span>
+        <span class="definition-row__label">${escapeHtml(`${labelPrefix}${node.label}`)}</span>
+        <span class="definition-row__meta">${escapeHtml(node.meta || "")}</span>
+      </${tag}>
+    `;
+  }
+
+  function renderTimelineTreeRow(node, treeState) {
+    const role = treeState.hasChildren ? "toggle" : node.timelineNode?.logId ? "activate" : "none";
+    const tag = role === "none" ? "div" : "button";
+    const toggleMarker = treeState.hasChildren ? (treeState.expanded ? "▾" : "▸") : "";
+    const staticClass = role === "none" ? " task-row--static" : "";
+    return `
+      <${tag}
+        class="task-row${staticClass}"
+        data-tree-node-id="${escapeAttr(node.id)}"
+        data-tree-role="${role}">
+        <span class="task-row__ascii">${escapeHtml(`${treeState.connector}${toggleMarker ? ` ${toggleMarker}` : ""}`)}</span>
+        <span class="task-row__dot ${node.statusClass}"></span>
+        <span class="task-row__label">${escapeHtml(node.label)}</span>
+        <span class="task-row__meta">${escapeHtml(node.meta || "")}</span>
+      </${tag}>
+    `;
+  }
+
+  function bindTreeInteractions(host, options) {
+    for (const element of host.querySelectorAll("[data-tree-node-id]")) {
+      element.addEventListener("click", () => {
+        const node = options.findNode(element.getAttribute("data-tree-node-id"));
+        if (!node) {
+          return;
+        }
+        const role = element.getAttribute("data-tree-role");
+        if (role === "toggle") {
+          toggleTreeNode(node, options.expandedState, options.autoExpandedIds, options.defaultExpanded);
+          options.rerender();
+          return;
+        }
+        if (role === "activate") {
+          options.onActivate(node);
+        }
+      });
+    }
+  }
+
+  function toggleTreeNode(node, expandedState, autoExpandedIds, defaultExpanded) {
+    const current = isTreeNodeExpanded(node, expandedState, autoExpandedIds, defaultExpanded);
+    expandedState[node.id] = !current;
+  }
+
+  function isTreeNodeExpanded(node, expandedState, autoExpandedIds, defaultExpanded) {
+    if (autoExpandedIds.has(node.id)) {
+      return true;
+    }
+    if (Object.prototype.hasOwnProperty.call(expandedState, node.id)) {
+      return expandedState[node.id];
+    }
+    return defaultExpanded(node);
+  }
+
+  function findTreeNodeById(nodes, id) {
+    for (const node of nodes) {
+      if (node.id === id) {
+        return node;
+      }
+      const nested = findTreeNodeById(node.children, id);
+      if (nested) {
+        return nested;
+      }
+    }
+    return null;
+  }
+
+  function countLeafNodes(nodes) {
+    let count = 0;
+    for (const node of nodes) {
+      if (!node.children.length && (node.kind === "definition" || node.kind === "task")) {
+        count += 1;
+        continue;
+      }
+      count += countLeafNodes(node.children);
+    }
+    return count;
+  }
+
+  function timelineNodeKind(node) {
+    const type = String(node.type || "").toLowerCase();
+    if (type === "stage") {
+      return "stage";
+    }
+    if (type === "job" || type === "phase") {
+      return "job";
+    }
+    return "task";
   }
 
   function matchesWildcard(value, pattern) {
