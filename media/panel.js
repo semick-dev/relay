@@ -29,6 +29,7 @@
     definitionBuildsMeta: null,
     buildFilter: "all",
     currentTaskFilter: "",
+    currentTaskFilterMode: "all",
     timelineTreeExpanded: {},
     currentBuildLoading: false,
     currentBuildRequestId: 0,
@@ -894,7 +895,11 @@
             <h3>Build Timeline</h3>
             <span class="muted">${escapeHtml(state.currentTimelineMeta?.cached ? "cached timeline" : "fresh timeline")}</span>
           </div>
-          <input id="task-filter" class="definitions-filter task-filter" type="text" placeholder="Filter tasks like test* or publish" value="${escapeAttr(state.currentTaskFilter)}" />
+          <div class="task-filter-controls">
+            <button id="task-filter-all" class="task-filter-toggle${state.currentTaskFilterMode === "all" ? " is-active" : ""}" type="button" title="Show all tasks" aria-label="Show all tasks">◎</button>
+            <button id="task-filter-errors" class="task-filter-toggle${state.currentTaskFilterMode === "errors" ? " is-active" : ""}" type="button" title="Filter to errored tasks" aria-label="Filter to errored tasks">!</button>
+            <input id="task-filter" class="definitions-filter task-filter" type="text" placeholder="Filter tasks like test* or publish" value="${escapeAttr(state.currentTaskFilter)}" />
+          </div>
         </div>
         <div id="task-tree" class="task-tree"></div>
       </section>
@@ -907,6 +912,7 @@
     if (taskFilter) {
       const applyTaskFilter = () => {
         state.currentTaskFilter = taskFilter.value;
+        state.currentTaskFilterMode = state.currentTaskFilter === buildErroredTaskFilterValue(state.currentTimeline) ? "errors" : "all";
         renderTimelineSection();
       };
       taskFilter.addEventListener("keydown", (event) => {
@@ -917,6 +923,30 @@
       });
       taskFilter.addEventListener("blur", () => {
         applyTaskFilter();
+      });
+    }
+    const taskFilterAll = document.getElementById("task-filter-all");
+    if (taskFilterAll) {
+      taskFilterAll.addEventListener("click", () => {
+        state.currentTaskFilterMode = "all";
+        state.currentTaskFilter = "";
+        const input = document.getElementById("task-filter");
+        if (input) {
+          input.value = "";
+        }
+        renderTimelineSection();
+      });
+    }
+    const taskFilterErrors = document.getElementById("task-filter-errors");
+    if (taskFilterErrors) {
+      taskFilterErrors.addEventListener("click", () => {
+        state.currentTaskFilterMode = "errors";
+        state.currentTaskFilter = buildErroredTaskFilterValue(state.currentTimeline);
+        const input = document.getElementById("task-filter");
+        if (input) {
+          input.value = state.currentTaskFilter;
+        }
+        renderTimelineSection();
       });
     }
     renderTimelineSection();
@@ -1195,7 +1225,7 @@
     const filteredTree = projectTree(
       timelineTree,
       state.currentTaskFilter,
-      (node) => node.kind === "task" && matchesWildcard(node.timelineNode.name, state.currentTaskFilter)
+      (node) => node.kind === "task" && matchesTimelineTaskFilter(node.timelineNode, state.currentTaskFilter)
     );
     host.innerHTML = filteredTree.nodes.length
       ? renderTreeNodes(filteredTree.nodes, {
@@ -1265,6 +1295,38 @@
       return "wait";
     }
     return normalizedResult || normalizedState || "n/a";
+  }
+
+  function matchesTimelineTaskFilter(node, pattern) {
+    return matchesWildcard(node.name, pattern);
+  }
+
+  function buildErroredTaskFilterValue(nodes) {
+    const names = collectErroredTaskNames(nodes);
+    return names.join(",");
+  }
+
+  function collectErroredTaskNames(nodes, names = new Set()) {
+    for (const node of nodes || []) {
+      if (isErroredTimelineNode(node)) {
+        names.add(node.name);
+      }
+      if (node.children?.length) {
+        collectErroredTaskNames(node.children, names);
+      }
+    }
+    return Array.from(names).sort((left, right) => left.localeCompare(right));
+  }
+
+  function isErroredTimelineNode(node) {
+    const normalizedResult = String(node.result || "").toLowerCase();
+    const normalizedState = String(node.state || "").toLowerCase();
+    return normalizedResult === "failed"
+      || normalizedResult === "canceled"
+      || normalizedResult === "cancelled"
+      || normalizedResult === "timeout"
+      || normalizedState === "canceled"
+      || normalizedState === "cancelled";
   }
 
   async function refreshMainPane() {
@@ -1625,12 +1687,18 @@
     if (!trimmed) {
       return true;
     }
-    if (!trimmed.includes("*")) {
-      return value.toLowerCase().includes(trimmed.toLowerCase());
+    const parts = trimmed.split(",").map((part) => part.trim()).filter(Boolean);
+    if (!parts.length) {
+      return true;
     }
-    const escaped = trimmed.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
-    const regex = new RegExp(`^${escaped}$`, "i");
-    return regex.test(value);
+    return parts.some((part) => {
+      if (!part.includes("*")) {
+        return value.toLowerCase().includes(part.toLowerCase());
+      }
+      const escaped = part.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+      const regex = new RegExp(`^${escaped}$`, "i");
+      return regex.test(value);
+    });
   }
 
   async function apiGet(path, options = {}) {
