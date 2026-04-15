@@ -890,8 +890,11 @@
       </details>
       <section class="task-tree-shell">
         <div class="section-head">
-          <h3>Build Timeline</h3>
-          <span class="muted">${escapeHtml(state.currentTimelineMeta?.cached ? "cached timeline" : "fresh timeline")}</span>
+          <div class="section-head__title">
+            <h3>Build Timeline</h3>
+            <span class="muted">${escapeHtml(state.currentTimelineMeta?.cached ? "cached timeline" : "fresh timeline")}</span>
+          </div>
+          <input id="task-filter" class="definitions-filter task-filter" type="text" placeholder="Filter tasks like test* or publish" value="${escapeAttr(state.currentTaskFilter)}" />
         </div>
         <div id="task-tree" class="task-tree"></div>
       </section>
@@ -900,6 +903,22 @@
     document.getElementById("build-artifacts-button").addEventListener("click", () => {
       void loadArtifacts(false);
     });
+    const taskFilter = document.getElementById("task-filter");
+    if (taskFilter) {
+      const applyTaskFilter = () => {
+        state.currentTaskFilter = taskFilter.value;
+        renderTimelineSection();
+      };
+      taskFilter.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          applyTaskFilter();
+        }
+      });
+      taskFilter.addEventListener("blur", () => {
+        applyTaskFilter();
+      });
+    }
     renderTimelineSection();
   }
 

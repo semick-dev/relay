@@ -2,7 +2,7 @@
 
 ## 0.0.10
 
-- Resolving #6
+- Resolving #6, #9
 
 ## 0.0.9
 

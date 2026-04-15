@@ -946,6 +946,16 @@ input:focus {
   font-weight: 700;
 }
 
+.section-head__title {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.task-filter {
+  width: min(360px, 100%);
+}
+
 .task-tree {
   display: grid;
   gap: 4px;
