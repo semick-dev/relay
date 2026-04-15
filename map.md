@@ -53,7 +53,6 @@ On activation:
 - creates `RelayStorage`
 - creates `RelayCacheStore`
 - loads ADO token from VS Code secrets
-- if no saved token exists, falls back once to `process.env.ADO_TOKEN` and stores it into secrets
 - creates `RelayAdoClient`
 - creates and starts `RelayApiServer`
 - creates `RelayMainPanel`
@@ -444,8 +443,6 @@ Those reflect the intended direction for build, artifact, and queue behavior.
 
 Expected environment:
 
-- `ADO_TOKEN` is optional if the token has already been stored in VS Code secrets
-- `ADO_TOKEN` is still accepted as a bootstrap fallback
 - `RELAY_OTEL_FOLDER` is optional
 
 Build:

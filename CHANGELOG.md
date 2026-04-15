@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.11
+
+- Updates to the readme RE: setting the token being used
+- Cleanups of stale code paths that won't work
+- Improvements to error logging on bad PAT settings
+
 ## 0.0.10
 
 - Resolving #6, #9, #4, #5, #10

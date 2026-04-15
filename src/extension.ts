@@ -23,11 +23,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const storage = new RelayStorage(context.globalStorageUri.fsPath);
   const cacheStore = new RelayCacheStore(storage);
 
-  let token = await context.secrets.get(SECRET_KEY);
-  if (!token && process.env.ADO_TOKEN) {
-    token = process.env.ADO_TOKEN;
-    await context.secrets.store(SECRET_KEY, token);
-  }
+  const token = await context.secrets.get(SECRET_KEY);
 
   const adoClient = new RelayAdoClient(token);
   relayServer = new RelayApiServer(adoClient, cacheStore, storage, telemetry);

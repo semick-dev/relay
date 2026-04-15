@@ -6,7 +6,8 @@
     orgUrl: bootstrap.savedState.orgUrl || "",
     activeTheme: bootstrap.savedState.activeTheme || "githubdark",
     authConfigured: true,
-    loadingProjects: false
+    loadingProjects: false,
+    sidebarError: null
   };
 
   const elements = {
@@ -27,7 +28,7 @@
   });
 
   init().catch((error) => {
-    renderBanner(error.message || String(error));
+    renderSidebarError(error);
   });
 
   async function init() {
@@ -62,11 +63,12 @@
 
     state.orgUrl = elements.orgUrl.value.trim();
     persistState();
-    renderBanner("");
+    clearSidebarError();
     setLoadingState(true);
     try {
       const url = `/api/org/projects?orgUrl=${encodeURIComponent(state.orgUrl)}${forceRefresh ? "&refresh=1" : ""}`;
       const response = await apiGet(url);
+      clearSidebarError();
       renderProjects(response.projects);
       setCachePill(response.cached, response.lastRefresh);
       await emit("relay.ui.sidebar.projects.loaded", {
@@ -110,6 +112,27 @@
       }
       elements.projectList.appendChild(card);
     }
+  }
+
+  function renderProjectsError(errorState) {
+    const isAuthError = errorState.kind === "auth";
+    elements.projectList.innerHTML =
+      '<div class="empty-state empty-state--compact">' +
+      '<div class="banner banner--error">' +
+      '<div class="banner__body">' +
+      `<strong>${escapeHtml(errorState.title)}</strong>` +
+      `<div>${escapeHtml(errorState.message)}</div>` +
+      "</div>" +
+      '<button type="button" class="message-close" data-dismiss-sidebar-error aria-label="Dismiss">×</button>' +
+      "</div>" +
+      (isAuthError
+        ? '<div class="button-row">' +
+          '<button type="button" class="button" data-clear-token>Clear Token</button>' +
+          '<button type="button" class="button button--primary" data-set-token>Set Token</button>' +
+          "</div>"
+        : "") +
+      "</div>";
+    bindSidebarErrorActions();
   }
 
   function renderThemes() {
@@ -186,10 +209,17 @@
     elements.cachePill.textContent = `${cached ? "Cached" : "Fresh"} · ${formatDate(lastRefresh)}`;
   }
 
-  function renderBanner(message) {
-    elements.messageBanner.innerHTML = message
-      ? `<div class="banner">${escapeHtml(message)}</div>`
-      : "";
+  function renderBanner(errorState) {
+    if (!errorState) {
+      elements.messageBanner.innerHTML = "";
+      return;
+    }
+    elements.messageBanner.innerHTML =
+      '<div class="banner banner--error">' +
+      `<div class="banner__body"><strong>${escapeHtml(errorState.title)}</strong><div>${escapeHtml(errorState.message)}</div></div>` +
+      '<button type="button" class="message-close" data-dismiss-sidebar-error aria-label="Dismiss">×</button>' +
+      "</div>";
+    bindSidebarErrorActions();
   }
 
   function setAuthState(authConfigured, message) {
@@ -210,11 +240,18 @@
           vscode.postMessage({ type: "requestSetToken" });
         });
       }
-      renderBanner(message || "Authentication token is not configured.");
+      renderBanner({
+        title: "Authentication Required",
+        message: message || "Authentication token is not configured.",
+        kind: "auth"
+      });
       return;
     }
 
     elements.cachePill.textContent = "Idle";
+    if (state.sidebarError && state.sidebarError.kind === "auth") {
+      clearSidebarError();
+    }
   }
 
   function recheckAuth() {
@@ -224,7 +261,7 @@
         return loadProjects(false);
       }
     }).catch(function (error) {
-      renderBanner(error.message || String(error));
+      renderSidebarError(error);
     });
   }
 
@@ -235,12 +272,71 @@
   }
 
   function handleLoadError(error) {
-    const message = error?.message || String(error);
-    if (/not configured/i.test(message)) {
-      setAuthState(false, message);
+    const errorState = normalizeSidebarError(error);
+    if (errorState.kind === "auth" && /not configured/i.test(errorState.message)) {
+      setAuthState(false, errorState.message);
       return;
     }
-    renderBanner(message);
+    renderSidebarError(errorState);
+  }
+
+  function renderSidebarError(error) {
+    const errorState = normalizeSidebarError(error);
+    state.sidebarError = errorState;
+    renderBanner(errorState);
+    renderProjectsError(errorState);
+  }
+
+  function clearSidebarError() {
+    state.sidebarError = null;
+    renderBanner(null);
+  }
+
+  function normalizeSidebarError(error) {
+    const message = error?.message || String(error);
+    if (/401/.test(message) || /unauthorized/i.test(message)) {
+      return {
+        kind: "auth",
+        title: "Azure DevOps Authentication Failed",
+        message: "The saved token was rejected by Azure DevOps. Clear it and set a new token, then try loading projects again."
+      };
+    }
+    if (/not configured/i.test(message)) {
+      return {
+        kind: "auth",
+        title: "Authentication Required",
+        message
+      };
+    }
+    return {
+      kind: "error",
+      title: "Unable To Load Projects",
+      message
+    };
+  }
+
+  function bindSidebarErrorActions() {
+    for (const button of document.querySelectorAll("[data-dismiss-sidebar-error]")) {
+      button.addEventListener("click", function () {
+        clearSidebarError();
+        if (!state.authConfigured) {
+          return;
+        }
+        if (!elements.projectList.children.length || elements.projectList.querySelector(".empty-state")) {
+          elements.projectList.innerHTML = "";
+        }
+      });
+    }
+    for (const button of document.querySelectorAll("[data-set-token]")) {
+      button.addEventListener("click", function () {
+        vscode.postMessage({ type: "requestSetToken" });
+      });
+    }
+    for (const button of document.querySelectorAll("[data-clear-token]")) {
+      button.addEventListener("click", function () {
+        vscode.postMessage({ type: "requestClearToken" });
+      });
+    }
   }
 
   function highlightProject(activeCard, view) {

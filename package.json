@@ -2,7 +2,7 @@
   "name": "ado-relay",
   "displayName": "Azure DevOps Relay",
   "description": "An Azure DevOps interface.",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "publisher": "semick-dev",
   "license": "MIT",
   "repository": {

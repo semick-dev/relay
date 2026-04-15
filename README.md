@@ -4,7 +4,7 @@ An Azure DevOps interface that allows easy access to build artifacts and task de
 
 ## Demo
 
-<img width="1600" height="625" alt="Azure DevOps Relay interface" src="https://github.com/user-attachments/assets/cd05138a-7346-4ebc-aa85-079115e7c1e1" />
+![Azure DevOps Relay interface](media/relay_example.jpg)
 
 [Video Link:](https://github.com/user-attachments/assets/6ae4ba7d-af43-40e9-b1f7-e1ae80c4af1a)
 
@@ -21,8 +21,8 @@ An Azure DevOps interface that allows easy access to build artifacts and task de
 ## UI Flow
 
 0. Install `semick-dev.ado-relay`.
-1. Set environment variable `ADO_TOKEN` to ADO pat with at least `Build:Read` before starting `code`.
-2. Open the Azure DevOps Relay activity bar view.
+1. Open the Azure DevOps Relay activity bar view.
+2. If prompted, run `Azure DevOps Relay: Set Token` from the Command Palette and save an Azure DevOps PAT with at least `Build:Read`.
 3. Enter the target Azure DevOps organization URL and load projects.
 4. Choose a project and open its definitions or artifacts view.
 5. Select a definition to inspect recent builds.
@@ -30,7 +30,8 @@ An Azure DevOps interface that allows easy access to build artifacts and task de
 
 ## Notes
 
-- `ADO_TOKEN` must be present in the VS Code environment for Azure DevOps requests to succeed.
+- Relay stores the Azure DevOps PAT in VS Code secrets after you run `Azure DevOps Relay: Set Token`.
+- Use `Azure DevOps Relay: Clear Token` to remove a stale or invalid token, then run `Azure DevOps Relay: Set Token` again.
 - Large task logs are gated behind an idempotent download action. Repeated clicks will simply load previously downloaded file.
 - Contributor and local debugging instructions live in `CONTRIBUTING.md`.
 

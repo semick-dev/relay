@@ -4,7 +4,6 @@
 
 Expected environment:
 
-- `ADO_TOKEN` set before launching VS Code
 - optional `RELAY_OTEL_FOLDER` for persisted telemetry output
 
 Install dependencies and build:
@@ -22,7 +21,6 @@ Use that launch configuration to start an Extension Development Host directly fr
 
 The launch configuration forwards:
 
-- `ADO_TOKEN`
 - `RELAY_OTEL_FOLDER`
 
 ## Packaging

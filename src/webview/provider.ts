@@ -83,6 +83,11 @@ export class RelaySidebarProvider implements vscode.WebviewViewProvider, vscode.
 
     if (typed.type === "requestSetToken") {
       await vscode.commands.executeCommand("relay.setToken");
+      return;
+    }
+
+    if (typed.type === "requestClearToken") {
+      await vscode.commands.executeCommand("relay.clearToken");
     }
   }
 
@@ -135,6 +140,8 @@ export class RelaySidebarProvider implements vscode.WebviewViewProvider, vscode.
         <button id="connect-button" class="button button--primary">Load Projects</button>
       </div>
 
+      <div id="message-banner"></div>
+
       <div class="sidebar__group sidebar__group--projects">
         <div class="section-title">
           <span>Projects</span>
@@ -147,9 +154,6 @@ export class RelaySidebarProvider implements vscode.WebviewViewProvider, vscode.
         <p class="section-title">Themes</p>
         <div id="theme-list" class="theme-list"></div>
       </div>
-    </aside>
-
-      <div id="message-banner"></div>
     </aside>
   </div>
 
