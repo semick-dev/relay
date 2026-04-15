@@ -875,6 +875,9 @@
         <button id="build-artifacts-button" class="button button--ghost">Artifacts</button>
         <button id="build-page-back" class="button button--ghost">Back</button>
       </div>
+      <div class="build-page__link-row">
+        <a class="build-page__link eyebrow" href="${escapeAttr(buildWebUrl())}" target="_blank" rel="noreferrer">Open In Azure DevOps</a>
+      </div>
       <div class="build-page__subtitle muted"${buildCommitMessageTitle(state.currentBuild.commitMessage, 70)}>${escapeHtml(truncateCommitMessage(state.currentBuild.commitMessage, 70))}</div>
       <details class="build-summary" open>
         <summary></summary>
@@ -958,6 +961,13 @@
     elements.detailPanel.classList.remove("is-task-pane");
     elements.detailStatusCorner.className = "panel-corner is-hidden";
     elements.detailKind.textContent = "Build";
+  }
+
+  function buildWebUrl() {
+    const org = String(state.orgUrl || "").replace(/\/+$/, "");
+    const project = encodeURIComponent(state.selectedProject || "");
+    const buildId = encodeURIComponent(String(state.currentBuild?.id || ""));
+    return `${org}/${project}/_build/results?buildId=${buildId}`;
   }
 
   async function openTaskPane(taskName, logId, logLineCount = 0, taskStatusClass = "task-row__dot--neutral", taskStartTime = "", taskFinishTime = "", forceRefresh = false) {

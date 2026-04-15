@@ -909,6 +909,21 @@ input:focus {
   font-size: 0.95rem;
 }
 
+.build-page__link-row {
+  margin-top: calc(-1 * var(--space-3));
+  margin-bottom: var(--space-2);
+}
+
+.build-page__link {
+  display: inline-block;
+  color: var(--accent-1);
+  text-decoration: none;
+}
+
+.build-page__link:hover {
+  text-decoration: underline;
+}
+
 .build-summary {
   border: 1px solid var(--border-0);
   border-radius: 0;
