@@ -1587,13 +1587,18 @@
   function renderDefinitionTreeRow(node, treeState) {
     const selected = node.kind === "definition" && state.selectedDefinition?.id === node.definition.id ? " is-active" : "";
     const rowClass = node.kind === "definition" ? "definition-row definition-row--item" : "definition-row definition-row--folder";
-    const toggleMarker = treeState.hasChildren ? (treeState.expanded ? "▾" : "▸") : "";
     const role = treeState.hasChildren ? "toggle" : "activate";
     const labelPrefix = node.kind === "definition" ? "• " : "";
     const tag = node.kind === "definition" || treeState.hasChildren ? "button" : "div";
+    const parentClass = treeState.hasChildren ? " definition-row--parent" : "";
+    const expandedClass = treeState.hasChildren && treeState.expanded ? " is-expanded" : "";
+    const toggle = treeState.hasChildren
+      ? `<span class="tree-toggle" aria-hidden="true">${treeState.expanded ? "−" : "+"}</span>`
+      : "";
     return `
-      <${tag} class="${rowClass}${selected}" data-tree-node-id="${escapeAttr(node.id)}" data-tree-role="${role}">
-        <span class="definition-row__ascii">${escapeHtml(`${treeState.connector}${toggleMarker ? ` ${toggleMarker}` : ""}`)}</span>
+      <${tag} class="${rowClass}${parentClass}${expandedClass}${selected}" data-tree-node-id="${escapeAttr(node.id)}" data-tree-role="${role}">
+        <span class="definition-row__ascii">${escapeHtml(treeState.connector)}</span>
+        ${toggle}
         <span class="definition-row__label">${escapeHtml(`${labelPrefix}${node.label}`)}</span>
         <span class="definition-row__meta">${escapeHtml(node.meta || "")}</span>
       </${tag}>
@@ -1603,14 +1608,19 @@
   function renderTimelineTreeRow(node, treeState) {
     const role = treeState.hasChildren ? "toggle" : node.timelineNode?.logId ? "activate" : "none";
     const tag = role === "none" ? "div" : "button";
-    const toggleMarker = treeState.hasChildren ? (treeState.expanded ? "▾" : "▸") : "";
     const staticClass = role === "none" ? " task-row--static" : "";
+    const parentClass = treeState.hasChildren ? " task-row--parent" : "";
+    const expandedClass = treeState.hasChildren && treeState.expanded ? " is-expanded" : "";
+    const toggle = treeState.hasChildren
+      ? `<span class="tree-toggle" aria-hidden="true">${treeState.expanded ? "−" : "+"}</span>`
+      : "";
     return `
       <${tag}
-        class="task-row${staticClass}"
+        class="task-row${staticClass}${parentClass}${expandedClass}"
         data-tree-node-id="${escapeAttr(node.id)}"
         data-tree-role="${role}">
-        <span class="task-row__ascii">${escapeHtml(`${treeState.connector}${toggleMarker ? ` ${toggleMarker}` : ""}`)}</span>
+        <span class="task-row__ascii">${escapeHtml(treeState.connector)}</span>
+        ${toggle}
         <span class="task-row__dot ${node.statusClass}"></span>
         <span class="task-row__label">${escapeHtml(node.label)}</span>
         <span class="task-row__meta">${escapeHtml(node.meta || "")}</span>
