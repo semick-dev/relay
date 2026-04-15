@@ -17,19 +17,24 @@ Read files in this order:
 9. [media/main.js](/home/semick/repo/relay/media/main.js)
 10. [media/panel.js](/home/semick/repo/relay/media/panel.js)
 11. [media/base.css](/home/semick/repo/relay/media/base.css)
-12. [plans/build_layout.md](/home/semick/repo/relay/plans/build_layout.md)
-13. [plans/artifacts_layout.md](/home/semick/repo/relay/plans/artifacts_layout.md)
+12. [plans/2026-04-12-ado-definition-12-queue-notes.md](/home/semick/repo/relay/plans/2026-04-12-ado-definition-12-queue-notes.md)
+13. [plans/build_layout.md](/home/semick/repo/relay/plans/build_layout.md)
+14. [plans/artifacts_layout.md](/home/semick/repo/relay/plans/artifacts_layout.md)
 
-If you only have 5 minutes, read `src/extension.ts`, `src/server/apiServer.ts`, `media/panel.js`, and `media/base.css`.
+If you only have 5 minutes, read `src/extension.ts`, `src/server/apiServer.ts`, `src/server/adoClient.ts`, `media/panel.js`, and `media/base.css`.
 
 ## What This Repo Is
 
-This is a desktop-only VS Code extension named `Relay`. It is an Activity Bar-first Azure DevOps build UI replacement.
+This is a desktop-only VS Code extension packaged as:
+
+- package name: `ado-relay`
+- display name: `Azure DevOps Relay`
+- publisher: `semick-dev`
 
 High-level shape:
 
-- left sidebar webview for org URL, projects, theme switching
-- main webview panel for definitions, build lists, build details, task logs, artifacts
+- left sidebar webview for org URL, auth state, projects, theme switching
+- main webview panel for definitions, build lists, queueing, build details, task logs, artifacts
 - localhost HTTP API started inside the extension host
 - all ADO traffic goes through that local API
 - persistent cache stored under VS Code global storage
@@ -47,12 +52,21 @@ On activation:
 - creates `RelayTelemetrySink`
 - creates `RelayStorage`
 - creates `RelayCacheStore`
-- creates `RelayAdoClient` with `process.env.ADO_TOKEN`
+- loads ADO token from VS Code secrets
+- if no saved token exists, falls back once to `process.env.ADO_TOKEN` and stores it into secrets
+- creates `RelayAdoClient`
 - creates and starts `RelayApiServer`
 - creates `RelayMainPanel`
 - registers `RelaySidebarProvider`
+- registers commands:
+  - `relay.refresh`
+  - `relay.setToken`
+  - `relay.clearToken`
 
-The extension assumes `ADO_TOKEN` is already in the VS Code process environment.
+Important current behavior:
+
+- token storage is secret-backed, not environment-only
+- the sidebar can request token setup interactively
 
 ### UI split
 
@@ -66,7 +80,7 @@ Main panel:
 - [src/webview/mainPanel.ts](/home/semick/repo/relay/src/webview/mainPanel.ts)
 - [media/panel.js](/home/semick/repo/relay/media/panel.js)
 
-The sidebar never talks to ADO directly. The main panel never talks to ADO directly. Everything goes through the local API server.
+Neither webview talks to Azure DevOps directly. Everything goes through the local API server.
 
 ## Current UX Model
 
@@ -76,6 +90,7 @@ The sidebar is the control surface. It currently provides:
 
 - org URL entry
 - `Load Projects`
+- token-required empty state with `Set Token` when auth is missing
 - project list
 - per-project sub-buttons:
   - `Definitions`
@@ -86,7 +101,7 @@ The sidebar is the control surface. It currently provides:
 Current header copy:
 
 - eyebrow: `Azure DevOps`
-- title: `Relay`
+- title: `Azure DevOps Relay`
 
 ### Main panel
 
@@ -95,21 +110,25 @@ The main panel is the real work area.
 Current navigation shape:
 
 1. Open a project in `Definitions`
-2. Click a definition
-3. Right 50% pane becomes definition-scoped build list
-4. Click a build
-5. Main panel becomes full build page
-6. Click a task
-7. Right 50% pane becomes task output pane
-8. Click `Artifacts` inside build details
-9. Right 50% pane becomes artifacts pane
+2. Browse definitions as a terse tree
+3. Click a definition
+4. Right detail pane opens with tabs:
+   - `List Builds for Definition`
+   - `Queue Definition`
+5. Click a build from the list tab
+6. Main panel becomes the build details page
+7. Click a task
+8. Right detail pane becomes task output
+9. Click `Artifacts`
+10. Right detail pane becomes artifacts pane
 
 Important behaviors:
 
-- `Ctrl+F` is enabled on the main webview panel via `enableFindWidget`
-- mouse/browser back is used for panel navigation
-- clickable cache pills are the refresh affordance
-- non-button UI is intentionally square, not rounded
+- the definition detail pane splits immediately and shows loading states while build lists load
+- the build page renders immediately and shows a loading state while build details/timeline load
+- cache pills are the refresh affordance
+- queueing a YAML-backed definition navigates directly to the queued build details page on success
+- visible errors in the panel are dismissible
 
 ## Backend Layout
 
@@ -126,6 +145,7 @@ It owns:
 - build-local file reads/writes
 - definitions precache job tracking
 - shaping responses for the webviews
+- non-cached queue metadata and queue submission routes
 
 Important endpoints:
 
@@ -135,6 +155,8 @@ Important endpoints:
 - `GET /api/projects/:project/definitions`
 - `GET /api/projects/:project/definitions/status`
 - `POST /api/projects/:project/definitions/precache`
+- `GET /api/projects/:project/definitions/:definitionId/queue-metadata`
+- `POST /api/projects/:project/definitions/:definitionId/queue`
 - `GET /api/builds/:buildId`
 - `GET /api/builds/:buildId/timeline`
 - `GET /api/builds/:buildId/logs/:logId/meta`
@@ -156,14 +178,21 @@ It owns:
 - project listing
 - build listing/details
 - build definitions listing
+- YAML pipeline queue metadata lookup
+- YAML pipeline preview lookup for parameter discovery
+- YAML pipeline queueing via `pipelines/{id}/runs`
 - timeline fetch
 - raw log fetch
 - build changes fetch for commit message
 - artifact listing/download
 
-Important implementation detail:
+Important implementation details:
 
-- build list rows get their commit message from `builds/{id}/changes`, not from the plain build object
+- build list rows get commit messages from `builds/{id}/changes`
+- queueable variables are filtered to `allowOverride`
+- YAML parameter metadata is currently derived from `POST /_apis/pipelines/{id}/preview`
+- queue submission uses `templateParameters` plus `variables`
+- object/list parameter textarea values are parsed with the `yaml` package before submission
 
 ### Generic cache
 
@@ -260,6 +289,7 @@ It contains:
 
 - bootstrap payloads for sidebar/panel webviews
 - all API response shapes
+- queue metadata / queue request / queue response contracts
 - UI theme ids
 - core ADO-derived entities like builds, definitions, timeline nodes, artifacts
 
@@ -272,6 +302,7 @@ It contains:
 Owns:
 
 - org URL entry
+- auth-required state
 - project loading
 - sidebar state persistence
 - project action clicks
@@ -289,6 +320,7 @@ It owns:
 - project opening
 - definition loading/filtering/tree rendering
 - definition-scoped build list rendering
+- queue tab rendering and interaction
 - build filter chips
 - build detail rendering
 - timeline/task tree rendering
@@ -297,6 +329,7 @@ It owns:
 - artifacts pane rendering
 - navigation/history
 - cache-pill behavior in main and detail panes
+- panel-local and global dismissible error handling
 
 If a UI bug exists, there is a high chance it is in this file.
 
@@ -312,6 +345,7 @@ Current visual rules:
 - buttons and pills still have rounded treatment
 - terse, text-heavy list styling for definitions and task tree
 - build rows are compact, with a colored status square in the top-right corner
+- definition detail tabs use attached square tab styling
 
 Themes:
 
@@ -327,17 +361,21 @@ Themes:
 
 - definitions are shown as a terse tree, not button cards
 - filter supports case-insensitive text plus `*` wildcard patterns
+- filter applies on `Enter` or blur, not on every keystroke
 - only definition rows are clickable
 - there is a loading spinner while definitions are loading
-- the old definitions warmup bar was removed
+- a visible root node `All Matching Build Definitions` starts the tree
+- folder-only nodes render with a trailing `/`
 
 ### Definition-scoped builds
 
+- build list and queue flow live behind tabs
 - build rows are compact and square
 - row shape is:
   - `#<id> · <buildNumber> · <definitionName>`
   - commit message on its own muted line
   - branch / requester / time below
+- commit messages are truncated in the list with hover title only when truncated
 - colored status square sits at top-right of each row
 - build filters:
   - `All`
@@ -345,12 +383,23 @@ Themes:
   - `Failed / Cancelled`
   - `Success`
 
+### Queue definition
+
+- queueing support is intended for YAML-backed definitions
+- user provides branch/ref first, then prepares queue inputs
+- branch-aware parameter metadata is loaded before run
+- parameters render as textareas seeded from defaults
+- variables render as editable name/value rows
+- queue errors are local to the queue tab and dismissible
+- successful queue navigates directly to the queued build page
+
 ### Build details
 
 - full-pane build page
-- build details fold is collapsible
+- summary card fold is collapsible
+- timeline heading is `Build Timeline`
 - timeline is rendered as a terse ASCII-like tree
-- task clicks open right-side detail pane
+- task clicks open the right-side detail pane
 
 ### Task logs
 
@@ -375,11 +424,10 @@ Themes:
 
 Things I would assume are most likely to need attention next:
 
-- `media/panel.js` is doing a lot and is the main complexity hotspot
-- the sidebar HTML in `src/webview/provider.ts` has a suspicious extra closing `</aside>` near the bottom and should be cleaned up
-- `relay.refresh` in `src/extension.ts` still shows a message about a button that no longer exists
-- definitions precache job plumbing still exists on the backend even though the visible warmup bar was removed
-- task/build/artifact flows are functional, but the frontend is still fairly stateful and hand-rolled
+- `media/panel.js` is still the main complexity hotspot
+- `src/webview/provider.ts` still has a stray extra closing `</aside>` in the rendered HTML
+- queueing is now functional, but YAML parameter discovery is a subtle area and should be rechecked carefully when new pipeline shapes are introduced
+- definitions precache job plumbing still exists on the backend even though the visible warmup bar is gone
 
 ## Plans And Design Intent
 
@@ -388,14 +436,16 @@ Read these before changing layout behavior:
 - [plans/2026-04-10-relay-extension-v1.md](/home/semick/repo/relay/plans/2026-04-10-relay-extension-v1.md)
 - [plans/build_layout.md](/home/semick/repo/relay/plans/build_layout.md)
 - [plans/artifacts_layout.md](/home/semick/repo/relay/plans/artifacts_layout.md)
+- [plans/2026-04-12-ado-definition-12-queue-notes.md](/home/semick/repo/relay/plans/2026-04-12-ado-definition-12-queue-notes.md)
 
-They reflect the intended direction for build and artifact views.
+Those reflect the intended direction for build, artifact, and queue behavior.
 
 ## Build / Run
 
 Expected environment:
 
-- `ADO_TOKEN` must be present before launching VS Code
+- `ADO_TOKEN` is optional if the token has already been stored in VS Code secrets
+- `ADO_TOKEN` is still accepted as a bootstrap fallback
 - `RELAY_OTEL_FOLDER` is optional
 
 Build:
@@ -407,10 +457,10 @@ npm run build
 Run:
 
 - use the VS Code Extension Development Host
-- open the Relay Activity Bar icon
+- open the Azure DevOps Relay Activity Bar icon
 
 ## Fast Mental Model
 
 If you need a one-paragraph model:
 
-`src/extension.ts` boots a localhost ADO proxy/cache server plus two webviews. `src/server/apiServer.ts` is the backend brain, `src/server/adoClient.ts` is the thin ADO transport, `src/server/storage.ts` and `src/server/cacheStore.ts` persist things, `media/main.js` drives the sidebar, `media/panel.js` drives everything else, and `media/base.css` is the shared UI language. Build-local persisted artifacts, timelines, and logs live under `.relay/build/<buildId>/`.
+`src/extension.ts` boots a localhost ADO proxy/cache server plus two webviews. `src/server/apiServer.ts` is the backend brain, `src/server/adoClient.ts` is the thin ADO transport plus YAML queueing adapter, `src/server/storage.ts` and `src/server/cacheStore.ts` persist things, `media/main.js` drives the sidebar, `media/panel.js` drives almost everything else, and `media/base.css` is the shared UI language. Build-local persisted artifacts, timelines, and logs live under `.relay/build/<buildId>/`.
