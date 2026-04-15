@@ -660,6 +660,23 @@ input:focus {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 500;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.definition-row__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.definition-row__marker {
+  color: #9fb3c8;
+  font-size: 0.98rem;
+  line-height: 1;
+  flex: 0 0 auto;
 }
 
 .definition-row__meta {

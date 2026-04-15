@@ -1588,18 +1588,20 @@
     const selected = node.kind === "definition" && state.selectedDefinition?.id === node.definition.id ? " is-active" : "";
     const rowClass = node.kind === "definition" ? "definition-row definition-row--item" : "definition-row definition-row--folder";
     const role = treeState.hasChildren ? "toggle" : "activate";
-    const labelPrefix = node.kind === "definition" ? "• " : "";
     const tag = node.kind === "definition" || treeState.hasChildren ? "button" : "div";
     const parentClass = treeState.hasChildren ? " definition-row--parent" : "";
     const expandedClass = treeState.hasChildren && treeState.expanded ? " is-expanded" : "";
     const toggle = treeState.hasChildren
       ? `<span class="tree-toggle" aria-hidden="true">${treeState.expanded ? "−" : "+"}</span>`
       : "";
+    const label = node.kind === "definition"
+      ? `<span class="definition-row__marker" aria-hidden="true">◇</span><span class="definition-row__text">${escapeHtml(node.label)}</span>`
+      : `<span class="definition-row__text">${escapeHtml(node.label)}</span>`;
     return `
       <${tag} class="${rowClass}${parentClass}${expandedClass}${selected}" data-tree-node-id="${escapeAttr(node.id)}" data-tree-role="${role}">
         <span class="definition-row__ascii">${escapeHtml(treeState.connector)}</span>
         ${toggle}
-        <span class="definition-row__label">${escapeHtml(`${labelPrefix}${node.label}`)}</span>
+        <span class="definition-row__label">${label}</span>
         <span class="definition-row__meta">${escapeHtml(node.meta || "")}</span>
       </${tag}>
     `;
