@@ -1242,7 +1242,7 @@
           treeType: "timeline",
           expandedState: state.timelineTreeExpanded,
           autoExpandedIds: filteredTree.autoExpandedIds,
-          defaultExpanded: (node) => node.kind === "stage",
+          defaultExpanded: (node) => node.kind !== "job" && node.kind !== "deployment",
           renderRow: renderTimelineTreeRow
         })
       : '<div class="empty-state">No timeline records returned for this build.</div>';
@@ -1250,7 +1250,7 @@
       treeType: "timeline",
       expandedState: state.timelineTreeExpanded,
       autoExpandedIds: filteredTree.autoExpandedIds,
-      defaultExpanded: (node) => node.kind === "stage",
+      defaultExpanded: (node) => node.kind !== "job" && node.kind !== "deployment",
       findNode: (id) => findTreeNodeById(filteredTree.nodes, id),
       onActivate: (node) => {
         if (node.kind === "task" && node.timelineNode.logId) {
@@ -1695,8 +1695,14 @@
     if (type === "stage") {
       return "stage";
     }
-    if (type === "job" || type === "phase") {
+    if (type === "deployment") {
+      return "deployment";
+    }
+    if (type === "job") {
       return "job";
+    }
+    if (type === "phase") {
+      return "phase";
     }
     return "task";
   }
