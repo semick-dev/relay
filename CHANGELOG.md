@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.10
+
+- Resolving #6
+
+## 0.0.9
+
+- Fix broken extension load. External environment variables aren't getting honored and I cbfed to understand why. Just swapped to using secret storage, which is far better anyway as now you don't have to remember to set the token again from a fresh console window. Much better this way.
+
 ## 0.0.8
 
 - Add queue capabilities to the `build list` (EGviewing a build definition) pane

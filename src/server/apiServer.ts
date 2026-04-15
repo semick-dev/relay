@@ -38,6 +38,8 @@ const TTL_SECONDS = {
   definitions: 900
 } as const;
 
+const INLINE_TASK_LOG_LIMIT_BYTES = 1024 * 1024;
+
 interface DefinitionsJob {
   running: boolean;
   loadedCount: number;
@@ -466,21 +468,45 @@ export class RelayApiServer {
       return this.buildTaskLogResponse(buildId, logId, true, localTimestamp ?? build.build.lastRefresh, cachedLog, relativePath, sizeBytes);
     }
 
-    const taskLogKey = this.getTaskLogKey(buildId, logId);
+    const taskLogKey = this.getTaskLogKey(buildId, logId, forceRefresh ? "full" : "auto");
     const inFlight = this.taskLogLoads.get(taskLogKey);
     if (inFlight) {
       return await inFlight;
     }
 
     const loadPromise = (async () => {
-      const content = await this.adoClient.getLog(orgUrl, project, buildId, logId);
+      if (!forceRefresh) {
+        const probe = await this.adoClient.getLog(orgUrl, project, buildId, logId, {
+          startByte: 0,
+          endByte: INLINE_TASK_LOG_LIMIT_BYTES
+        });
+        const sizeBytes = probe.totalSize ?? probe.contentBytes;
+        if (sizeBytes > INLINE_TASK_LOG_LIMIT_BYTES) {
+          return {
+            ok: true as const,
+            buildId,
+            logId,
+            cached: false,
+            lastRefresh: new Date().toISOString(),
+            inline: false,
+            sizeBytes
+          };
+        }
+
+        const timestamp = new Date().toISOString();
+        await this.storage.writeBuildTimestamp(buildId, timestamp);
+        await this.storage.writeBuildText(buildId, relativePath, probe.content);
+        return this.buildTaskLogResponse(buildId, logId, false, timestamp, probe.content, relativePath, sizeBytes);
+      }
+
+      const full = await this.adoClient.getLog(orgUrl, project, buildId, logId);
       const timestamp = new Date().toISOString();
       await this.storage.writeBuildTimestamp(buildId, timestamp);
-      const sizeBytes = Buffer.byteLength(content, "utf8");
+      const sizeBytes = full.totalSize ?? full.contentBytes;
 
-      await this.storage.writeBuildText(buildId, relativePath, content);
+      await this.storage.writeBuildText(buildId, relativePath, full.content);
 
-      return this.buildTaskLogResponse(buildId, logId, false, timestamp, content, relativePath, sizeBytes);
+      return this.buildTaskLogResponse(buildId, logId, false, timestamp, full.content, relativePath, sizeBytes);
     })();
 
     this.taskLogLoads.set(taskLogKey, loadPromise);
@@ -735,8 +761,8 @@ export class RelayApiServer {
     return `${new URL(orgUrl).origin}|${project}`;
   }
 
-  private getTaskLogKey(buildId: number, logId: number): string {
-    return `${buildId}:${logId}`;
+  private getTaskLogKey(buildId: number, logId: number, mode: "auto" | "full"): string {
+    return `${buildId}:${logId}:${mode}`;
   }
 
   private buildTaskLogResponse(
@@ -748,7 +774,7 @@ export class RelayApiServer {
     relativePath: string,
     sizeBytes: number
   ): RelayTaskLogResponse {
-    if (sizeBytes >= 1024 * 1024) {
+    if (sizeBytes > INLINE_TASK_LOG_LIMIT_BYTES) {
       return {
         ok: true,
         buildId,

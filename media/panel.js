@@ -988,20 +988,41 @@
       : `
         <div class="task-pane">
           <div class="task-pane__meta-row">
-            <div class="definition-builds-meta muted">${formatTaskTiming(taskStartTime, taskFinishTime)} · ${response.cached ? "cached" : "fresh"} · ${formatBytes(response.sizeBytes)}</div>
+            <div class="definition-builds-meta muted">${formatTaskTiming(taskStartTime, taskFinishTime)} · ${response.downloadPath ? (response.cached ? "cached" : "fresh") : "not downloaded"} · ${formatBytes(response.sizeBytes)}</div>
             ${renderInlineCachePill(response.cached, response.lastRefresh, "Refresh task output")}
           </div>
           <div class="banner">Task output is larger than 1MB.</div>
-          <div class="detail-card">
-            <p class="eyebrow">Local Path</p>
-            <code>${escapeHtml(response.downloadPath || "")}</code>
-          </div>
-          <div class="button-row">
-            <button id="task-show-log-button" class="button button--primary">Show Log</button>
-          </div>
+          ${response.downloadPath ? `
+            <div class="detail-card">
+              <p class="eyebrow">Local Path</p>
+              <code>${escapeHtml(response.downloadPath)}</code>
+            </div>
+            <div class="button-row">
+              <button id="task-show-log-button" class="button button--primary">Show Log</button>
+            </div>
+          ` : `
+            <button id="task-download-button" class="button button--primary">Download Task Output</button>
+            <div id="task-download-progress" class="progress-wrap is-hidden">
+              <div class="progress-meta">
+                <span>Downloading task output</span>
+                <span id="task-download-label">Starting</span>
+              </div>
+              <div class="progress-bar"><div id="task-download-bar" class="progress-bar__fill progress-bar__fill--indeterminate"></div></div>
+            </div>
+          `}
         </div>
       `;
     bindInlineTaskCachePill(taskName, logId, logLineCount, taskStatusClass, taskStartTime, taskFinishTime);
+    const downloadButton = document.getElementById("task-download-button");
+    if (downloadButton) {
+      downloadButton.addEventListener("click", async () => {
+        const progress = document.getElementById("task-download-progress");
+        const label = document.getElementById("task-download-label");
+        progress.classList.remove("is-hidden");
+        label.textContent = "Downloading";
+        await openTaskPane(taskName, logId, logLineCount, taskStatusClass, taskStartTime, taskFinishTime, true);
+      });
+    }
     const showButton = document.getElementById("task-show-log-button");
     if (showButton && response.downloadPath) {
       showButton.addEventListener("click", () => {

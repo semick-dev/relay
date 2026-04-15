@@ -657,6 +657,7 @@ input:focus {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  margin-bottom: 14px;
 }
 
 .task-pane__meta-row .definition-builds-meta {
@@ -687,7 +688,9 @@ input:focus {
 
 .button-row {
   display: flex;
+  justify-content: flex-end;
   gap: 12px;
+  margin-top: 14px;
 }
 
 .detail-pane,

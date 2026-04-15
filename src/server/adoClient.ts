@@ -232,16 +232,31 @@ export class RelayAdoClient {
     return mapTimeline(payload.records ?? []);
   }
 
-  async getLog(orgUrl: string, project: string, buildId: number, logId: number): Promise<string> {
+  async getLog(
+    orgUrl: string,
+    project: string,
+    buildId: number,
+    logId: number,
+    options?: {
+      startByte?: number;
+      endByte?: number;
+    }
+  ): Promise<{
+    content: string;
+    contentBytes: number;
+    totalSize?: number;
+  }> {
     const url = new URL(`${encodeURIComponent(project)}/_apis/build/builds/${buildId}/logs/${logId}`, normalizeOrgUrl(orgUrl));
     url.searchParams.set("api-version", "7.1");
     this.ensureAuth();
 
     const auth = Buffer.from(`:${this.token ?? ""}`, "utf8").toString("base64");
+    const rangeHeader = buildByteRange(options?.startByte, options?.endByte);
     const response = await fetch(url, {
       headers: {
         Authorization: `Basic ${auth}`,
-        Accept: "text/plain"
+        Accept: "text/plain",
+        ...(rangeHeader ? { Range: rangeHeader } : {})
       }
     });
 
@@ -249,7 +264,12 @@ export class RelayAdoClient {
       throw new Error(`ADO log request failed (${response.status}) for ${url}`);
     }
 
-    return await response.text();
+    const content = await response.text();
+    return {
+      content,
+      contentBytes: Buffer.byteLength(content, "utf8"),
+      totalSize: parseContentRangeSize(response.headers.get("content-range")) ?? parseSizeHeader(response.headers.get("content-length"))
+    };
   }
 
   async getLogSize(orgUrl: string, project: string, buildId: number, logId: number): Promise<number | undefined> {
@@ -443,6 +463,15 @@ function parseContentRangeSize(value: string | null): number | undefined {
     return undefined;
   }
   return parseSizeHeader(match[1] ?? null);
+}
+
+function buildByteRange(startByte?: number, endByte?: number): string | undefined {
+  if (!Number.isFinite(startByte) && !Number.isFinite(endByte)) {
+    return undefined;
+  }
+  const start = Number.isFinite(startByte) ? Math.max(0, Number(startByte)) : "";
+  const end = Number.isFinite(endByte) ? Math.max(0, Number(endByte)) : "";
+  return `bytes=${start}-${end}`;
 }
 
 function mapBuildSummary(build: AdoBuild): RelayBuildSummary {
