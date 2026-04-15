@@ -5,6 +5,9 @@
 - Updates to the readme RE: setting the token being used
 - Cleanups of stale code paths that won't work
 - Improvements to error logging on bad PAT settings
+- Build definitions and build details ascii layouts now share common code.
+  - And apply heavy refactoring to the collapsible section appearance of both.
+  - Should be much more performant on first load within VSCode UI
 
 ## 0.0.10
 
