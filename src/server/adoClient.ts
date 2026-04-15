@@ -25,11 +25,21 @@ export class RelayHttpError extends Error {
 }
 
 export class RelayAdoClient {
-  constructor(private readonly token: string | undefined) {}
+  constructor(private token: string | undefined) {}
+
+  get hasToken(): boolean {
+    return Boolean(this.token);
+  }
+
+  setToken(token: string | undefined): void {
+    this.token = token;
+  }
 
   ensureAuth(): void {
     if (!this.token) {
-      throw new RelayAuthError("ADO_TOKEN is not configured.");
+      throw new RelayAuthError(
+        "ADO token is not configured. Run \"Azure DevOps Relay: Set Token\" from the Command Palette."
+      );
     }
   }
 
