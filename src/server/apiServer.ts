@@ -369,6 +369,24 @@ export class RelayApiServer {
     const adoUrl = new URL(`${encodeURIComponent(project)}/_apis/build/definitions`, orgUrl);
     adoUrl.searchParams.set("api-version", "7.1");
 
+    if (!forceRefresh) {
+      const cached = await this.cacheStore.readJson<RelayDefinitionSummary[]>("GET", adoUrl.toString());
+      if (cached) {
+        await this.telemetry.log("relay.definitions.cache.reuse", "info", {
+          project,
+          count: cached.body.length,
+          lastRefresh: cached.lastRefresh
+        });
+        return {
+          ok: true,
+          projectName: project,
+          definitions: cached.body,
+          cached: true,
+          lastRefresh: cached.lastRefresh
+        };
+      }
+    }
+
     return await this.withCache<RelayDefinitionSummary[], DefinitionsResponse>({
       cacheUrl: adoUrl.toString(),
       ttlSeconds: TTL_SECONDS.definitions,
@@ -641,17 +659,19 @@ export class RelayApiServer {
     const adoUrl = new URL(`${encodeURIComponent(project)}/_apis/build/definitions`, orgUrl);
     adoUrl.searchParams.set("api-version", "7.1");
 
-    if (limitedRefresh && await this.cacheStore.isFresh("GET", adoUrl.toString())) {
+    if (limitedRefresh) {
       const cached = await this.cacheStore.readJson<RelayDefinitionSummary[]>("GET", adoUrl.toString());
-      return {
-        ok: true,
-        projectName: project,
-        running: false,
-        loadedCount: cached?.body.length ?? 0,
-        totalCount: cached?.body.length ?? 0,
-        lastRefresh: cached?.lastRefresh,
-        error: undefined
-      };
+      if (cached) {
+        return {
+          ok: true,
+          projectName: project,
+          running: false,
+          loadedCount: cached.body.length,
+          totalCount: cached.body.length,
+          lastRefresh: cached.lastRefresh,
+          error: undefined
+        };
+      }
     }
 
     const jobKey = this.getDefinitionsJobKey(orgUrl, project);

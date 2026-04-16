@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.12
+
+- Reused cached build definitions across Relay sessions instead of forcing a full definitions reload after the short in-memory freshness window elapsed
+- Fixed the definitions refresh path to avoid immediately re-fetching definitions again after the precache job completed
+
 ## 0.0.11
 
 - Updates to the readme RE: setting the token being used

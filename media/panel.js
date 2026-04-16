@@ -149,10 +149,10 @@
     try {
       await apiPost(`/api/projects/${encodeURIComponent(state.selectedProject)}/definitions/precache`, {
         orgUrl: state.orgUrl,
-        limitedRefresh: true
+        limitedRefresh: !forceRefresh
       });
       await pollDefinitionsStatus();
-      const url = `/api/projects/${encodeURIComponent(state.selectedProject)}/definitions?orgUrl=${encodeURIComponent(state.orgUrl)}${forceRefresh ? "&refresh=1" : ""}`;
+      const url = `/api/projects/${encodeURIComponent(state.selectedProject)}/definitions?orgUrl=${encodeURIComponent(state.orgUrl)}`;
       const response = await apiGet(url);
       state.definitions = response.definitions;
       state.loadedDefinitionsProject = state.selectedProject;
