@@ -497,6 +497,26 @@ input:focus {
   border-bottom: 1px solid var(--border-0);
 }
 
+.panel-corner.build-item__corner--success {
+  background: #34d399;
+}
+
+.panel-corner.build-item__corner--failed {
+  background: #fb7185;
+}
+
+.panel-corner.build-item__corner--cancelled {
+  background: var(--status-cancelled);
+}
+
+.panel-corner.build-item__corner--running {
+  background: #38bdf8;
+}
+
+.panel-corner.build-item__corner--neutral {
+  background: #94a3b8;
+}
+
 .panel--main.is-build-page .panel__header {
   padding-right: 64px;
 }

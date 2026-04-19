@@ -267,6 +267,12 @@
     return Math.min(100, Math.max(1, Math.floor(numeric)));
   }
 
+  function prefersSummaryBuildState(status, result) {
+    const normalizedStatus = String(status || "").toLowerCase();
+    const normalizedResult = String(result || "").toLowerCase();
+    return normalizedResult === "unknown" && (normalizedStatus === "notstarted" || normalizedStatus === "unknown");
+  }
+
   async function openBuild(buildId, replaceHistory) {
     const summaryBuild = state.definitionBuilds.find((build) => build.id === buildId) || null;
     const requestId = state.currentBuildRequestId + 1;
@@ -306,9 +312,17 @@
       if (state.currentBuildRequestId !== requestId) {
         return;
       }
+      const buildStatus = prefersSummaryBuildState(response.build.status, response.build.result)
+        ? (summaryBuild?.status || response.build.status)
+        : response.build.status;
+      const buildResult = prefersSummaryBuildState(response.build.status, response.build.result)
+        ? (summaryBuild?.result || response.build.result)
+        : response.build.result;
       state.currentBuild = {
         ...response.build,
         commitMessage: response.build.commitMessage || summaryBuild?.commitMessage,
+        status: buildStatus,
+        result: buildResult,
         sourceBranch: response.build.sourceBranch || summaryBuild?.sourceBranch,
         requestedFor: response.build.requestedFor || summaryBuild?.requestedFor,
         queueTime: response.build.queueTime || summaryBuild?.queueTime,
@@ -1842,7 +1856,7 @@
     if (result === "failed") {
       return "build-item__corner--failed";
     }
-    if (result === "canceled" || result === "cancelled") {
+    if (result === "canceled" || result === "cancelled" || status === "cancelling" || status === "canceled" || status === "cancelled") {
       return "build-item__corner--cancelled";
     }
     if (status === "inprogress" || status === "notstarted" || status === "postponed") {
