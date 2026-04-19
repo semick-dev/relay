@@ -8,6 +8,8 @@
 - Add Github PR link to build details page.
 - Add infinite scroll to the builds list.
 - Add selectable mass cancellation in the builds list.
+- `Cancelled` status now displays as `gray` in chips.
+- Layout cleanup for the `Queue This Build` tab of the builds list.
 
 
 ## 0.0.12

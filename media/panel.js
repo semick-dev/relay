@@ -536,9 +536,24 @@
         ${escapeHtml(String(state.definitionBuilds.length))} builds ·
         ${escapeHtml(formatDate(state.definitionBuildsMeta?.lastRefresh))}
       </div>
+      ${state.definitionBuildsTab === "list" ? `
+        <div class="definition-builds-topbar">
+          <div class="definition-builds-topbar__spacer"></div>
+          <div class="definition-builds-utility-row">
+            <label class="definition-builds-batch-size" for="build-batch-size">
+              <span class="eyebrow">Batch Size</span>
+              <input id="build-batch-size" class="definitions-filter definition-builds-batch-size__input" type="number" min="1" max="100" step="1" value="${escapeAttr(String(state.buildBatchSize))}" />
+            </label>
+            <label class="definition-builds-selection" for="build-selection-toggle">
+              <span class="eyebrow">Selection</span>
+              <input id="build-selection-toggle" class="definition-builds-selection__checkbox" type="checkbox"${state.buildSelectionMode ? " checked" : ""} />
+            </label>
+          </div>
+        </div>
+      ` : ""}
       <div class="definition-builds-tabs" role="tablist" aria-label="Definition tools">
         <button class="filter-chip ${state.definitionBuildsTab === "list" ? "is-active" : ""}" data-definition-tab="list" role="tab" aria-selected="${state.definitionBuildsTab === "list"}">List Builds for Definition</button>
-        <button class="filter-chip ${state.definitionBuildsTab === "queue" ? "is-active" : ""}" data-definition-tab="queue" role="tab" aria-selected="${state.definitionBuildsTab === "queue"}">Queue Definition</button>
+        <button class="filter-chip ${state.definitionBuildsTab === "queue" ? "is-active" : ""}" data-definition-tab="queue" role="tab" aria-selected="${state.definitionBuildsTab === "queue"}">Queue This Build</button>
       </div>
       <div class="definition-builds-tabpanel">
         ${state.definitionBuildsTab === "list" ? `
@@ -548,16 +563,6 @@
               <button class="filter-chip ${state.buildFilter === "inProgress" ? "is-active" : ""}" data-filter="inProgress">In Progress</button>
               <button class="filter-chip ${state.buildFilter === "failed" ? "is-active" : ""}" data-filter="failed">Failed / Cancelled</button>
               <button class="filter-chip ${state.buildFilter === "success" ? "is-active" : ""}" data-filter="success">Success</button>
-            </div>
-            <div class="definition-builds-utility-row">
-              <label class="definition-builds-batch-size" for="build-batch-size">
-                <span class="eyebrow">Batch Size</span>
-                <input id="build-batch-size" class="definitions-filter definition-builds-batch-size__input" type="number" min="1" max="100" step="1" value="${escapeAttr(String(state.buildBatchSize))}" />
-              </label>
-              <label class="definition-builds-selection" for="build-selection-toggle">
-                <span class="eyebrow">Selection</span>
-                <input id="build-selection-toggle" class="definition-builds-selection__checkbox" type="checkbox"${state.buildSelectionMode ? " checked" : ""} />
-              </label>
             </div>
           </div>
           ${state.buildSelectionMode ? `
@@ -664,8 +669,8 @@
       <div class="queue-definition">
         <div class="queue-definition__intro muted">Provide a branch or PR merge ref, then prepare the queue inputs for this definition.</div>
         <div class="queue-definition__branch-row">
-          <textarea id="queue-branch-input" class="queue-definition__textarea queue-definition__textarea--single" placeholder="refs/heads/main or refs/pull/123/merge"${state.definitionQueueLoading || state.definitionQueueRunning ? " disabled" : ""}>${escapeHtml(state.definitionQueueBranch)}</textarea>
-          <button id="queue-prepare-button" class="button button--primary"${state.definitionQueueLoading || state.definitionQueueRunning ? " disabled" : ""}>${state.definitionQueueLoading ? "Preparing..." : "Prepare for Queue"}</button>
+          <input id="queue-branch-input" class="queue-definition__input" type="text" value="${escapeAttr(state.definitionQueueBranch)}" placeholder="refs/heads/main or refs/pull/123/merge"${state.definitionQueueLoading || state.definitionQueueRunning ? " disabled" : ""} />
+          <button id="queue-prepare-button" class="button button--primary queue-definition__button"${state.definitionQueueLoading || state.definitionQueueRunning ? " disabled" : ""}>${state.definitionQueueLoading ? "Preparing..." : "Prepare for Queue"}</button>
         </div>
         ${state.definitionQueuePrepared && state.definitionQueueMetadata && !state.definitionQueueMetadata.isYaml ? `
           <div class="empty-state empty-state--compact">Only YAML-backed definitions are supported for queueing.</div>
@@ -703,7 +708,7 @@
                 <div class="queue-definition__variable-row">
                   <textarea class="queue-definition__textarea queue-definition__textarea--single" data-queue-variable-name-index="${index}" placeholder="Variable name">${escapeHtml(variable.name || "")}</textarea>
                   <textarea class="queue-definition__textarea queue-definition__textarea--single" data-queue-variable-value-index="${index}" placeholder="Variable value">${escapeHtml(variable.value || "")}</textarea>
-                  <button class="button button--ghost" type="button" data-queue-variable-remove-index="${index}">Remove</button>
+                  <button class="button button--ghost queue-definition__button" type="button" data-queue-variable-remove-index="${index}">Remove</button>
                 </div>
               `).join("")}
             </div>
