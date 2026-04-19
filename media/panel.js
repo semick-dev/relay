@@ -1,6 +1,7 @@
 (function () {
   const vscode = acquireVsCodeApi();
   const bootstrap = window.__RELAY_BOOTSTRAP__;
+  let definitionBuildListObserver = null;
 
   const state = {
     orgUrl: bootstrap.savedState.orgUrl || "",
@@ -11,6 +12,8 @@
     definitions: [],
     definitionsLoading: false,
     definitionBuildsLoading: false,
+    definitionBuildsLoadingMore: false,
+    definitionBuildsCancelRunning: false,
     definitionBuildsRequestId: 0,
     definitionBuildsTab: "list",
     definitionQueueLoading: false,
@@ -27,6 +30,12 @@
     definitionTreeExpanded: {},
     definitionBuilds: [],
     definitionBuildsMeta: null,
+    definitionBuildsContinuationToken: "",
+    buildBatchSize: 10,
+    buildSelectionMode: false,
+    selectedDefinitionBuildIds: {},
+    definitionBuildsNotice: "",
+    definitionBuildsError: "",
     buildFilter: "all",
     currentTaskFilter: "",
     currentTaskFilterMode: "all",
@@ -129,6 +138,9 @@
     state.selectedDefinition = null;
     state.currentBuild = null;
     state.definitionBuilds = [];
+    state.definitionBuildsContinuationToken = "";
+    state.definitionBuildsLoadingMore = false;
+    resetDefinitionBuildSelection();
     state.definitionTreeExpanded = {};
     state.timelineTreeExpanded = {};
     setTitle(`Azure DevOps Relay: ${project}`);
@@ -167,6 +179,7 @@
     state.selectedDefinition = definition;
     state.currentBuild = null;
     state.currentTask = null;
+    resetDefinitionBuildSelection();
     resetDefinitionQueueState();
     commitNavState({
       mode: "definitionBuilds",
@@ -180,27 +193,78 @@
     }
   }
 
-  async function loadDefinitionBuilds(definitionId, forceRefresh) {
+  async function loadDefinitionBuilds(definitionId, forceRefresh, append = false) {
     const requestId = state.definitionBuildsRequestId + 1;
     state.definitionBuildsRequestId = requestId;
-    state.definitionBuildsLoading = true;
-    if (state.selectedDefinition?.id === definitionId) {
-      renderDefinitionBuildsPane();
+    if (append) {
+      if (state.definitionBuildsLoading || state.definitionBuildsLoadingMore || !state.definitionBuildsContinuationToken) {
+        return;
+      }
+      state.definitionBuildsLoadingMore = true;
+      renderDefinitionBuildList();
+    } else {
+      state.definitionBuildsLoading = true;
+      state.definitionBuildsLoadingMore = false;
+      state.definitionBuildsContinuationToken = "";
+      if (state.selectedDefinition?.id === definitionId) {
+        renderDefinitionBuildsPane();
+      }
     }
     state.buildFilter = state.buildFilter || "all";
     try {
-      const url = `/api/projects/${encodeURIComponent(state.selectedProject)}/builds?orgUrl=${encodeURIComponent(state.orgUrl)}&definitionId=${definitionId}${forceRefresh ? "&refresh=1" : ""}`;
+      const batchSize = normalizeBuildBatchSize(state.buildBatchSize);
+      const continuation = append ? state.definitionBuildsContinuationToken : "";
+      const url = `/api/projects/${encodeURIComponent(state.selectedProject)}/builds?orgUrl=${encodeURIComponent(state.orgUrl)}&definitionId=${definitionId}&batchSize=${batchSize}${forceRefresh ? "&refresh=1" : ""}${continuation ? `&continuationToken=${encodeURIComponent(continuation)}` : ""}`;
       const response = await apiGet(url);
       if (state.definitionBuildsRequestId !== requestId) {
         return;
       }
-      state.definitionBuilds = response.builds;
-      state.definitionBuildsMeta = response;
+      state.definitionBuilds = append
+        ? state.definitionBuilds.concat(response.builds)
+        : response.builds;
+      state.definitionBuildsContinuationToken = response.continuationToken || "";
+      state.definitionBuildsMeta = append && state.definitionBuildsMeta
+        ? {
+            ...state.definitionBuildsMeta,
+            cached: state.definitionBuildsMeta.cached && response.cached,
+            lastRefresh: response.lastRefresh
+          }
+        : response;
     } finally {
       if (state.definitionBuildsRequestId === requestId) {
         state.definitionBuildsLoading = false;
+        state.definitionBuildsLoadingMore = false;
+        if (state.definitionBuildsTab === "list") {
+          renderDefinitionBuildList();
+        }
       }
     }
+  }
+
+  async function loadMoreDefinitionBuilds() {
+    if (!state.selectedDefinition || !state.definitionBuildsContinuationToken) {
+      return;
+    }
+    await loadDefinitionBuilds(state.selectedDefinition.id, false, true);
+  }
+
+  async function refreshDefinitionBuilds() {
+    if (!state.selectedDefinition) {
+      return;
+    }
+    state.selectedDefinitionBuildIds = {};
+    state.definitionBuildsNotice = "";
+    state.definitionBuildsError = "";
+    await loadDefinitionBuilds(state.selectedDefinition.id, true);
+    renderDefinitionBuildsPane();
+  }
+
+  function normalizeBuildBatchSize(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+      return 10;
+    }
+    return Math.min(100, Math.max(1, Math.floor(numeric)));
   }
 
   async function openBuild(buildId, replaceHistory) {
@@ -455,7 +519,7 @@
       <div class="definition-builds-meta muted">
         #${escapeHtml(String(state.selectedDefinition.id))} ·
         ${(state.definitionBuildsMeta?.cached ? "cached" : "fresh")} ·
-        ${escapeHtml(String(state.definitionBuildsMeta?.builds?.length ?? state.definitionBuilds.length))} builds ·
+        ${escapeHtml(String(state.definitionBuilds.length))} builds ·
         ${escapeHtml(formatDate(state.definitionBuildsMeta?.lastRefresh))}
       </div>
       <div class="definition-builds-tabs" role="tablist" aria-label="Definition tools">
@@ -464,12 +528,35 @@
       </div>
       <div class="definition-builds-tabpanel">
         ${state.definitionBuildsTab === "list" ? `
-          <div class="filter-row">
-            <button class="filter-chip ${state.buildFilter === "all" ? "is-active" : ""}" data-filter="all">All</button>
-            <button class="filter-chip ${state.buildFilter === "inProgress" ? "is-active" : ""}" data-filter="inProgress">In Progress</button>
-            <button class="filter-chip ${state.buildFilter === "failed" ? "is-active" : ""}" data-filter="failed">Failed / Cancelled</button>
-            <button class="filter-chip ${state.buildFilter === "success" ? "is-active" : ""}" data-filter="success">Success</button>
+          <div class="definition-builds-controls">
+            <div class="filter-row">
+              <button class="filter-chip ${state.buildFilter === "all" ? "is-active" : ""}" data-filter="all">All</button>
+              <button class="filter-chip ${state.buildFilter === "inProgress" ? "is-active" : ""}" data-filter="inProgress">In Progress</button>
+              <button class="filter-chip ${state.buildFilter === "failed" ? "is-active" : ""}" data-filter="failed">Failed / Cancelled</button>
+              <button class="filter-chip ${state.buildFilter === "success" ? "is-active" : ""}" data-filter="success">Success</button>
+            </div>
+            <div class="definition-builds-utility-row">
+              <label class="definition-builds-batch-size" for="build-batch-size">
+                <span class="eyebrow">Batch Size</span>
+                <input id="build-batch-size" class="definitions-filter definition-builds-batch-size__input" type="number" min="1" max="100" step="1" value="${escapeAttr(String(state.buildBatchSize))}" />
+              </label>
+              <label class="definition-builds-selection" for="build-selection-toggle">
+                <span class="eyebrow">Selection</span>
+                <input id="build-selection-toggle" class="definition-builds-selection__checkbox" type="checkbox"${state.buildSelectionMode ? " checked" : ""} />
+              </label>
+            </div>
           </div>
+          ${state.buildSelectionMode ? `
+            <div class="definition-builds-selection-bar">
+              <div id="definition-builds-selection-count" class="definition-builds-selection-bar__count muted">${escapeHtml(String(selectedDefinitionBuildCount()))} selected</div>
+              <div class="definition-builds-selection-bar__actions">
+                <button id="cancel-selected-builds" class="button button--primary"${state.definitionBuildsCancelRunning || selectedCancellableBuildCount() === 0 ? " disabled" : ""}>${state.definitionBuildsCancelRunning ? "Cancelling..." : "Cancel Selected"}</button>
+                <button id="cancel-build-selection-mode" class="button button--ghost"${state.definitionBuildsCancelRunning ? " disabled" : ""}>Done</button>
+              </div>
+            </div>
+          ` : ""}
+          ${state.definitionBuildsNotice ? renderDismissibleMessage("definition-builds-notice", state.definitionBuildsNotice, "success") : ""}
+          ${state.definitionBuildsError ? renderDismissibleMessage("definition-builds-error", state.definitionBuildsError, "error") : ""}
           <div id="definition-build-list" class="build-list definition-build-list"></div>
         ` : `
           ${renderDefinitionQueueTab()}
@@ -497,6 +584,56 @@
     for (const button of elements.detailBody.querySelectorAll("[data-filter]")) {
       button.addEventListener("click", () => {
         state.buildFilter = button.getAttribute("data-filter");
+        renderDefinitionBuildsPane();
+      });
+    }
+    const batchSizeInput = document.getElementById("build-batch-size");
+    if (batchSizeInput) {
+      const applyBatchSize = () => {
+        state.buildBatchSize = normalizeBuildBatchSize(batchSizeInput.value);
+        batchSizeInput.value = String(state.buildBatchSize);
+      };
+      batchSizeInput.addEventListener("change", applyBatchSize);
+      batchSizeInput.addEventListener("blur", applyBatchSize);
+    }
+    const selectionToggle = document.getElementById("build-selection-toggle");
+    if (selectionToggle) {
+      selectionToggle.addEventListener("change", () => {
+        state.buildSelectionMode = selectionToggle.checked;
+        if (!state.buildSelectionMode) {
+          resetDefinitionBuildSelection();
+        } else {
+          state.definitionBuildsNotice = "";
+          state.definitionBuildsError = "";
+        }
+        renderDefinitionBuildsPane();
+      });
+    }
+    const cancelSelectionMode = document.getElementById("cancel-build-selection-mode");
+    if (cancelSelectionMode) {
+      cancelSelectionMode.addEventListener("click", () => {
+        state.buildSelectionMode = false;
+        resetDefinitionBuildSelection();
+        renderDefinitionBuildsPane();
+      });
+    }
+    const cancelSelectedBuildsButton = document.getElementById("cancel-selected-builds");
+    if (cancelSelectedBuildsButton) {
+      cancelSelectedBuildsButton.addEventListener("click", () => {
+        void cancelSelectedBuilds();
+      });
+    }
+    const definitionBuildsNoticeClose = document.getElementById("definition-builds-notice-close");
+    if (definitionBuildsNoticeClose) {
+      definitionBuildsNoticeClose.addEventListener("click", () => {
+        state.definitionBuildsNotice = "";
+        renderDefinitionBuildsPane();
+      });
+    }
+    const definitionBuildsErrorClose = document.getElementById("definition-builds-error-close");
+    if (definitionBuildsErrorClose) {
+      definitionBuildsErrorClose.addEventListener("click", () => {
+        state.definitionBuildsError = "";
         renderDefinitionBuildsPane();
       });
     }
@@ -784,6 +921,11 @@
 
   function renderDefinitionBuildList() {
     const host = document.getElementById("definition-build-list");
+    if (!host) {
+      return;
+    }
+    disconnectDefinitionBuildListObserver();
+    const previousScrollTop = host.scrollTop;
     const total = state.definitionBuilds.length;
     const filtered = state.definitionBuilds.filter((build) => matchesBuildFilter(build, state.buildFilter));
     if (!total) {
@@ -798,10 +940,12 @@
     }
 
     host.className = "build-list";
-    host.innerHTML = filtered.map((build) => `
-      <button class="build-item" data-build-id="${build.id}">
+    host.innerHTML = `
+      ${filtered.map((build) => `
+      <button type="button" class="build-item${state.buildSelectionMode ? " build-item--selectable" : ""}${isDefinitionBuildSelected(build.id) ? " is-selected" : ""}${state.buildSelectionMode && !isBuildCancellable(build) ? " is-disabled" : ""}" data-build-id="${build.id}" aria-pressed="${state.buildSelectionMode ? String(isDefinitionBuildSelected(build.id)) : "false"}">
         <span class="build-item__corner ${buildStatusClass(build)}" title="${escapeAttr(build.result || build.status)}"></span>
         <div class="build-item__top">
+          ${state.buildSelectionMode ? `<span class="build-item__select-indicator${isDefinitionBuildSelected(build.id) ? " is-selected" : ""}${!isBuildCancellable(build) ? " is-disabled" : ""}" aria-hidden="true"></span>` : ""}
           <strong>#${escapeHtml(String(build.id))} · ${escapeHtml(build.buildNumber)} · ${escapeHtml(build.definitionName)}</strong>
         </div>
         <div class="build-item__title"${buildCommitMessageTitle(build.commitMessage, 30)}>${escapeHtml(truncateCommitMessage(build.commitMessage, 30))}</div>
@@ -811,13 +955,194 @@
           <span>${escapeHtml(formatDate(build.finishTime || build.queueTime))}</span>
         </div>
       </button>
-    `).join("");
+      `).join("")}
+      ${renderDefinitionBuildListFooter(filtered.length)}
+    `;
+    host.scrollTop = previousScrollTop;
 
     for (const button of host.querySelectorAll("[data-build-id]")) {
       button.addEventListener("click", () => {
-        void openBuild(Number(button.getAttribute("data-build-id")), false);
+        const buildId = Number(button.getAttribute("data-build-id"));
+        const build = state.definitionBuilds.find((item) => item.id === buildId);
+        if (state.buildSelectionMode) {
+          toggleDefinitionBuildSelection(build);
+          renderDefinitionBuildList();
+          updateDefinitionBuildSelectionBar();
+          return;
+        }
+        void openBuild(buildId, false);
       });
     }
+    const loadMoreButton = host.querySelector("[data-load-more-builds]");
+    if (loadMoreButton) {
+      loadMoreButton.addEventListener("click", () => {
+        void loadMoreDefinitionBuilds();
+      });
+    }
+    const maybeLoadMore = () => {
+      if (state.definitionBuildsTab !== "list" || state.definitionBuildsLoadingMore || !state.definitionBuildsContinuationToken) {
+        return;
+      }
+      const footer = host.querySelector(".definition-build-list__footer");
+      if (!footer) {
+        return;
+      }
+      const footerRect = footer.getBoundingClientRect();
+      const hostRect = host.getBoundingClientRect();
+      const detailRect = elements.detailPanel.getBoundingClientRect();
+      const nearHostBottom = footerRect.top - hostRect.bottom <= 160;
+      const nearDetailBottom = footerRect.top - detailRect.bottom <= 160;
+      if (nearHostBottom || nearDetailBottom) {
+        void loadMoreDefinitionBuilds();
+      }
+    };
+    host.onscroll = maybeLoadMore;
+    elements.detailPanel.onscroll = maybeLoadMore;
+    observeDefinitionBuildListFooter(host, maybeLoadMore);
+    requestAnimationFrame(maybeLoadMore);
+  }
+
+  function selectedDefinitionBuildCount() {
+    return Object.values(state.selectedDefinitionBuildIds).filter(Boolean).length;
+  }
+
+  function selectedCancellableBuildCount() {
+    return state.definitionBuilds.filter((build) => isDefinitionBuildSelected(build.id) && isBuildCancellable(build)).length;
+  }
+
+  function updateDefinitionBuildSelectionBar() {
+    const count = document.getElementById("definition-builds-selection-count");
+    if (count) {
+      count.textContent = `${selectedDefinitionBuildCount()} selected`;
+    }
+    const cancelButton = document.getElementById("cancel-selected-builds");
+    if (cancelButton && !state.definitionBuildsCancelRunning) {
+      cancelButton.disabled = selectedCancellableBuildCount() === 0;
+    }
+  }
+
+  function isDefinitionBuildSelected(buildId) {
+    return Boolean(state.selectedDefinitionBuildIds[buildId]);
+  }
+
+  function toggleDefinitionBuildSelection(build) {
+    if (!build || !isBuildCancellable(build)) {
+      return;
+    }
+    if (isDefinitionBuildSelected(build.id)) {
+      delete state.selectedDefinitionBuildIds[build.id];
+      return;
+    }
+    state.selectedDefinitionBuildIds[build.id] = true;
+  }
+
+  function resetDefinitionBuildSelection() {
+    state.selectedDefinitionBuildIds = {};
+    state.definitionBuildsCancelRunning = false;
+    state.definitionBuildsNotice = "";
+    state.definitionBuildsError = "";
+  }
+
+  function isBuildCancellable(build) {
+    const status = String(build?.status || "").toLowerCase();
+    return status === "inprogress" || status === "notstarted" || status === "postponed";
+  }
+
+  async function cancelSelectedBuilds() {
+    const selectedBuilds = state.definitionBuilds.filter((build) => isDefinitionBuildSelected(build.id));
+    const cancellableBuilds = selectedBuilds.filter((build) => isBuildCancellable(build));
+    const skippedCount = selectedBuilds.length - cancellableBuilds.length;
+    if (!cancellableBuilds.length) {
+      state.definitionBuildsError = skippedCount
+        ? "Only in-progress or queued builds can be cancelled."
+        : "Select at least one in-progress or queued build first.";
+      state.definitionBuildsNotice = "";
+      renderDefinitionBuildsPane();
+      return;
+    }
+    state.definitionBuildsCancelRunning = true;
+    state.definitionBuildsError = "";
+    state.definitionBuildsNotice = "";
+    renderDefinitionBuildsPane();
+    try {
+      const response = await apiPost(`/api/projects/${encodeURIComponent(state.selectedProject)}/builds/cancel?orgUrl=${encodeURIComponent(state.orgUrl)}`, {
+        buildIds: cancellableBuilds.map((build) => build.id)
+      }, { showBanner: false });
+      const cancelled = new Set(response.cancelledIds || cancellableBuilds.map((build) => build.id));
+      state.definitionBuilds = state.definitionBuilds.map((build) => cancelled.has(build.id)
+        ? { ...build, status: "cancelling", result: "none" }
+        : build);
+      state.definitionBuildsNotice = `Cancellation requested for ${cancelled.size} build${cancelled.size === 1 ? "" : "s"}${skippedCount ? `; skipped ${skippedCount} completed build${skippedCount === 1 ? "" : "s"}.` : "."}`;
+      state.definitionBuildsError = "";
+      state.selectedDefinitionBuildIds = {};
+    } catch (error) {
+      state.definitionBuildsError = error?.message || String(error);
+      state.definitionBuildsNotice = "";
+    } finally {
+      state.definitionBuildsCancelRunning = false;
+      renderDefinitionBuildsPane();
+    }
+  }
+
+  function renderDefinitionBuildListFooter(filteredCount) {
+    if (state.definitionBuildsLoadingMore) {
+      return `
+        <div class="definition-build-list__footer muted">
+          <span class="spinner"></span>
+          <span>Loading ${escapeHtml(String(normalizeBuildBatchSize(state.buildBatchSize)))} more builds...</span>
+        </div>
+      `;
+    }
+    if (state.definitionBuildsContinuationToken) {
+      return `
+        <button type="button" class="definition-build-list__footer definition-build-list__footer--action muted" data-load-more-builds>
+          Load ${escapeHtml(String(normalizeBuildBatchSize(state.buildBatchSize)))} more builds
+        </button>
+      `;
+    }
+    if (filteredCount < state.definitionBuilds.length) {
+      return `
+        <div class="definition-build-list__footer muted">
+          End of loaded build history.
+        </div>
+      `;
+    }
+    return `
+      <div class="definition-build-list__footer muted">
+        End of build history.
+      </div>
+    `;
+  }
+
+  function observeDefinitionBuildListFooter(host, onVisible) {
+    if (!state.definitionBuildsContinuationToken || state.definitionBuildsLoadingMore) {
+      return;
+    }
+    const footer = host.querySelector(".definition-build-list__footer");
+    if (!footer) {
+      return;
+    }
+    definitionBuildListObserver = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) {
+          continue;
+        }
+        onVisible();
+        break;
+      }
+    }, {
+      root: null,
+      threshold: 0.1
+    });
+    definitionBuildListObserver.observe(footer);
+  }
+
+  function disconnectDefinitionBuildListObserver() {
+    if (!definitionBuildListObserver) {
+      return;
+    }
+    definitionBuildListObserver.disconnect();
+    definitionBuildListObserver = null;
   }
 
   async function applyDefinitionSelection() {
@@ -836,8 +1161,11 @@
     state.currentBuild = null;
     state.currentTask = null;
     state.definitionBuildsLoading = false;
+    state.definitionBuildsLoadingMore = false;
     state.definitionBuilds = [];
     state.definitionBuildsMeta = null;
+    state.definitionBuildsContinuationToken = "";
+    resetDefinitionBuildSelection();
     commitNavState({ mode: "definitions", project: state.selectedProject }, true);
     renderDefinitionsScreen();
   }
@@ -1354,8 +1682,11 @@
     if (normalizedResult === "succeeded") {
       return "task-row__dot--success";
     }
-    if (normalizedResult === "failed" || normalizedResult === "canceled") {
+    if (normalizedResult === "failed") {
       return "task-row__dot--failed";
+    }
+    if (normalizedResult === "canceled" || normalizedResult === "cancelled") {
+      return "task-row__dot--cancelled";
     }
     if (normalizedResult === "skipped" || normalizedState === "pending" || normalizedState === "inprogress" || normalizedState === "queued") {
       return "task-row__dot--neutral";
@@ -1454,8 +1785,7 @@
     if (!state.selectedDefinition) {
       return;
     }
-    await loadDefinitionBuilds(state.selectedDefinition.id, true);
-    renderDefinitionBuildsPane();
+    await refreshDefinitionBuilds();
   }
 
   function commitNavState(next, replaceHistory) {
@@ -1509,8 +1839,11 @@
     if (result === "succeeded") {
       return "build-item__corner--success";
     }
-    if (result === "failed" || result === "canceled") {
+    if (result === "failed") {
       return "build-item__corner--failed";
+    }
+    if (result === "canceled" || result === "cancelled") {
+      return "build-item__corner--cancelled";
     }
     if (status === "inprogress" || status === "notstarted" || status === "postponed") {
       return "build-item__corner--running";
@@ -2044,6 +2377,9 @@
     }
     if (statusClass === "task-row__dot--failed") {
       return "build-item__corner--failed";
+    }
+    if (statusClass === "task-row__dot--cancelled") {
+      return "build-item__corner--cancelled";
     }
     return "build-item__corner--neutral";
   }

@@ -172,3 +172,75 @@ describe("RelayApiServer task log loading", () => {
     });
   });
 });
+
+describe("RelayApiServer build list loading", () => {
+  it("forwards batch size and continuation token to the ADO build list call", async () => {
+    const adoClient = {
+      listBuilds: vi.fn().mockResolvedValue({
+        builds: [{
+          id: 480,
+          buildNumber: "20260419.2",
+          definitionName: "demo",
+          status: "completed",
+          result: "succeeded"
+        }],
+        continuationToken: "next-page"
+      }),
+      getBuildChanges: vi.fn().mockResolvedValue("commit")
+    };
+    const cacheStore = {
+      isFresh: vi.fn().mockResolvedValue(false),
+      writeJson: vi.fn(async (_method: string, _url: string, _ttl: number, body: unknown) => ({
+        body,
+        cached: false,
+        lastRefresh: "2026-04-18T00:00:00.000Z"
+      }))
+    };
+    const storage = {
+      ensureReady: vi.fn(),
+      writeBuildTimestamp: vi.fn()
+    };
+    const telemetry = {
+      span: vi.fn(),
+      log: vi.fn(),
+      ingest: vi.fn()
+    };
+    const server = new RelayApiServer(adoClient as any, cacheStore as any, storage as any, telemetry as any);
+
+    const response = await (server as any).loadBuilds("https://dev.azure.com/org", "proj", false, 12, 25, "cursor-1");
+
+    expect(adoClient.listBuilds).toHaveBeenCalledWith("https://dev.azure.com/org", "proj", 25, 12, "cursor-1");
+    expect(adoClient.getBuildChanges).toHaveBeenCalledWith("https://dev.azure.com/org", "proj", 480);
+    expect(response).toMatchObject({
+      ok: true,
+      projectName: "proj",
+      continuationToken: "next-page",
+      builds: [{
+        id: 480,
+        commitMessage: "commit"
+      }]
+    });
+  });
+});
+
+describe("RelayApiServer build cancellation", () => {
+  it("deduplicates build ids before forwarding cancellation requests", async () => {
+    const adoClient = {
+      cancelBuilds: vi.fn().mockResolvedValue([480, 481])
+    };
+    const telemetry = {
+      span: vi.fn(),
+      log: vi.fn(),
+      ingest: vi.fn()
+    };
+    const server = new RelayApiServer(adoClient as any, {} as any, {} as any, telemetry as any);
+
+    const response = await (server as any).cancelBuilds("https://dev.azure.com/org", "proj", [480, 480, 481, -1]);
+
+    expect(adoClient.cancelBuilds).toHaveBeenCalledWith("https://dev.azure.com/org", "proj", [480, 481]);
+    expect(response).toEqual({
+      ok: true,
+      cancelledIds: [480, 481]
+    });
+  });
+});

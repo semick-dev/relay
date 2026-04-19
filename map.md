@@ -129,6 +129,8 @@ Important behaviors:
 - queueing a YAML-backed definition navigates directly to the queued build details page on success
 - visible errors in the panel are dismissible
 - GitHub pull-request builds can derive an `Open Pull Request` action from cached build metadata: `repositoryId`/`repositoryUrl`, `reason = pullRequest`, and `triggerInfo["pr.number"]` with `refs/pull/<n>/...` as fallback
+- definition-scoped build lists are paged; scrolling near the bottom appends the next batch using ADO continuation tokens, and the list tab exposes a `Batch Size` control for the per-fetch page size
+- the definition build-list tab also supports a `Selection` mode for bulk cancellation; active builds can be selected across already-loaded and newly-appended rows and cancelled together without leaving the list
 
 ## Backend Layout
 

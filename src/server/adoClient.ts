@@ -55,7 +55,13 @@ export class RelayAdoClient {
     }));
   }
 
-  async listBuilds(orgUrl: string, project: string, limit: number, definitionId?: number): Promise<RelayBuildSummary[]> {
+  async listBuilds(
+    orgUrl: string,
+    project: string,
+    limit: number,
+    definitionId?: number,
+    continuationToken?: string
+  ): Promise<{ builds: RelayBuildSummary[]; continuationToken?: string }> {
     const url = new URL(`${encodeURIComponent(project)}/_apis/build/builds`, normalizeOrgUrl(orgUrl));
     url.searchParams.set("$top", String(limit));
     url.searchParams.set("queryOrder", "queueTimeDescending");
@@ -63,8 +69,14 @@ export class RelayAdoClient {
     if (definitionId) {
       url.searchParams.set("definitions", String(definitionId));
     }
-    const payload = await this.requestJson<AdoBuildsResponse>(url.toString());
-    return payload.value.map(mapBuildSummary);
+    if (continuationToken) {
+      url.searchParams.set("continuationToken", continuationToken);
+    }
+    const response = await this.request<AdoBuildsResponse>(url.toString());
+    return {
+      builds: response.body.value.map(mapBuildSummary),
+      continuationToken: response.continuationToken
+    };
   }
 
   async getBuild(orgUrl: string, project: string, buildId: number): Promise<RelayBuildDetails> {
@@ -326,6 +338,19 @@ export class RelayAdoClient {
     return payload.value?.[0]?.message;
   }
 
+  async cancelBuilds(orgUrl: string, project: string, buildIds: number[]): Promise<number[]> {
+    if (!buildIds.length) {
+      return [];
+    }
+    const url = new URL(`${encodeURIComponent(project)}/_apis/build/builds`, normalizeOrgUrl(orgUrl));
+    url.searchParams.set("api-version", "7.1");
+    const payload = await this.requestWithBodyJson<AdoBuild[]>(url.toString(), buildIds.map((id) => ({
+      id,
+      status: "cancelling"
+    })), "PATCH");
+    return normalizeCancelledBuildIds(payload);
+  }
+
   async listArtifacts(orgUrl: string, project: string, buildId: number): Promise<RelayArtifactSummary[]> {
     const url = new URL(`${encodeURIComponent(project)}/_apis/build/builds/${buildId}/artifacts`, normalizeOrgUrl(orgUrl));
     url.searchParams.set("api-version", "7.1");
@@ -359,9 +384,9 @@ export class RelayAdoClient {
     return response.body;
   }
 
-  private async requestWithBodyJson<T>(url: string, body: unknown): Promise<T> {
+  private async requestWithBodyJson<T>(url: string, body: unknown, method = "POST"): Promise<T> {
     const response = await this.request<T>(url, {
-      method: "POST",
+      method,
       headers: {
         "Content-Type": "application/json"
       },
@@ -517,6 +542,20 @@ interface AdoProjectsResponse {
 
 interface AdoBuildsResponse {
   value: AdoBuild[];
+}
+
+function normalizeCancelledBuildIds(payload: unknown): number[] {
+  if (Array.isArray(payload)) {
+    return payload
+      .map((build) => typeof build === "object" && build ? (build as AdoBuild).id : undefined)
+      .filter((id): id is number => Number.isFinite(id));
+  }
+  if (payload && typeof payload === "object" && Array.isArray((payload as { value?: unknown[] }).value)) {
+    return (payload as { value: unknown[] }).value
+      .map((build) => typeof build === "object" && build ? (build as AdoBuild).id : undefined)
+      .filter((id): id is number => Number.isFinite(id));
+  }
+  return [];
 }
 
 interface AdoDefinitionsResponse {

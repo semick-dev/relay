@@ -5,6 +5,8 @@ import { RelayCacheStore } from "./cacheStore";
 import { RelayStorage } from "./storage";
 import { RelayTelemetrySink } from "./telemetry";
 import {
+  CancelBuildsRequest,
+  CancelBuildsResponse,
   RelayArtifactDownloadResponse,
   RelayArtifactsResponse,
   RelayArtifactSummary,
@@ -133,7 +135,16 @@ export class RelayApiServer {
         const orgUrl = requestUrl.searchParams.get("orgUrl") ?? "";
         const refresh = requestUrl.searchParams.get("refresh") === "1";
         const definitionId = Number(requestUrl.searchParams.get("definitionId") ?? "0");
-        const payload = await this.loadBuilds(orgUrl, project, refresh, Number.isFinite(definitionId) && definitionId > 0 ? definitionId : undefined);
+        const batchSize = Number(requestUrl.searchParams.get("batchSize") ?? "10");
+        const continuationToken = requestUrl.searchParams.get("continuationToken") ?? undefined;
+        const payload = await this.loadBuilds(
+          orgUrl,
+          project,
+          refresh,
+          Number.isFinite(definitionId) && definitionId > 0 ? definitionId : undefined,
+          sanitizeBuildBatchSize(batchSize),
+          continuationToken
+        );
         this.sendJson(res, 200, payload);
         return;
       }
@@ -170,6 +181,15 @@ export class RelayApiServer {
         const body = await readJsonBody<{ orgUrl?: string; limitedRefresh?: boolean }>(req);
         const payload = await this.startDefinitionsPrecache(body.orgUrl ?? "", project, body.limitedRefresh !== false);
         this.sendJson(res, 202, payload);
+        return;
+      }
+
+      if (method === "POST" && requestUrl.pathname.startsWith("/api/projects/") && requestUrl.pathname.endsWith("/builds/cancel")) {
+        const project = decodeURIComponent(requestUrl.pathname.split("/")[3] ?? "");
+        const orgUrl = requestUrl.searchParams.get("orgUrl") ?? "";
+        const body = await readJsonBody<CancelBuildsRequest>(req);
+        const payload = await this.cancelBuilds(orgUrl, project, body.buildIds ?? []);
+        this.sendJson(res, 200, payload);
         return;
       }
 
@@ -291,35 +311,50 @@ export class RelayApiServer {
     });
   }
 
-  private async loadBuilds(orgUrl: string, project: string, forceRefresh: boolean, definitionId?: number): Promise<BuildsResponse> {
+  private async loadBuilds(
+    orgUrl: string,
+    project: string,
+    forceRefresh: boolean,
+    definitionId?: number,
+    batchSize = 10,
+    continuationToken?: string
+  ): Promise<BuildsResponse> {
     validateOrgUrl(orgUrl);
     if (!project) {
       throw new Error("Project is required.");
     }
 
     const adoUrl = new URL(`${encodeURIComponent(project)}/_apis/build/builds`, orgUrl);
-    adoUrl.searchParams.set("$top", "10");
+    adoUrl.searchParams.set("$top", String(sanitizeBuildBatchSize(batchSize)));
     adoUrl.searchParams.set("queryOrder", "queueTimeDescending");
     adoUrl.searchParams.set("api-version", "7.1-preview.7");
     if (definitionId) {
       adoUrl.searchParams.set("definitions", String(definitionId));
     }
+    if (continuationToken) {
+      adoUrl.searchParams.set("continuationToken", continuationToken);
+    }
 
-    return await this.withCache<RelayBuildSummary[], BuildsResponse>({
+    return await this.withCache<{ builds: RelayBuildSummary[]; continuationToken?: string }, BuildsResponse>({
       cacheUrl: adoUrl.toString(),
       ttlSeconds: TTL_SECONDS.builds,
       forceRefresh,
       fetcher: async () => {
-        const builds = await this.adoClient.listBuilds(orgUrl, project, 10, definitionId);
-        return await Promise.all(builds.map(async (build) => ({
+        const response = await this.adoClient.listBuilds(orgUrl, project, sanitizeBuildBatchSize(batchSize), definitionId, continuationToken);
+        const builds = await Promise.all(response.builds.map(async (build) => ({
           ...build,
           commitMessage: await this.adoClient.getBuildChanges(orgUrl, project, build.id)
         })));
+        return {
+          builds,
+          continuationToken: response.continuationToken
+        };
       },
-      mapper: (builds, cached, lastRefresh) => ({
+      mapper: (payload, cached, lastRefresh) => ({
         ok: true,
         projectName: project,
-        builds,
+        builds: payload.builds,
+        continuationToken: payload.continuationToken,
         cached,
         lastRefresh
       }),
@@ -437,6 +472,19 @@ export class RelayApiServer {
     return {
       ok: true,
       build
+    };
+  }
+
+  private async cancelBuilds(orgUrl: string, project: string, buildIds: number[]): Promise<CancelBuildsResponse> {
+    validateOrgUrl(orgUrl);
+    if (!project) {
+      throw new Error("Project is required.");
+    }
+    const uniqueBuildIds = [...new Set(buildIds.filter((id) => Number.isFinite(id) && id > 0))];
+    const cancelledIds = await this.adoClient.cancelBuilds(orgUrl, project, uniqueBuildIds);
+    return {
+      ok: true,
+      cancelledIds
     };
   }
 
@@ -725,7 +773,14 @@ export class RelayApiServer {
       return await this.loadProjects(body.orgUrl, true);
     }
     if (body.resource === "builds") {
-      return await this.loadBuilds(body.orgUrl, body.project ?? "", true);
+      return await this.loadBuilds(
+        body.orgUrl,
+        body.project ?? "",
+        true,
+        body.definitionId,
+        sanitizeBuildBatchSize(body.batchSize ?? 10),
+        body.continuationToken
+      );
     }
     if (body.resource === "definitions") {
       return await this.loadDefinitions(body.orgUrl, body.project ?? "", true);
@@ -824,6 +879,13 @@ export class RelayApiServer {
 
     return Object.fromEntries(entries.filter((entry): entry is [string, string] => entry !== null));
   }
+}
+
+function sanitizeBuildBatchSize(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 10;
+  }
+  return Math.min(100, Math.max(1, Math.floor(value)));
 }
 
 async function readJsonBody<T>(req: http.IncomingMessage): Promise<T> {

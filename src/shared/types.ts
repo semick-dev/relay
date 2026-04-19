@@ -193,8 +193,18 @@ export interface BuildsResponse {
   ok: true;
   projectName: string;
   builds: RelayBuildSummary[];
+  continuationToken?: string;
   cached: boolean;
   lastRefresh: string;
+}
+
+export interface CancelBuildsRequest {
+  buildIds: number[];
+}
+
+export interface CancelBuildsResponse {
+  ok: true;
+  cancelledIds: number[];
 }
 
 export interface BuildResponse {
@@ -248,6 +258,9 @@ export interface RefreshRequest {
   orgUrl: string;
   project?: string;
   buildId?: number;
+  definitionId?: number;
+  batchSize?: number;
+  continuationToken?: string;
 }
 
 export interface TelemetryPayload {

@@ -5,6 +5,10 @@
 - Fixed task log loading so large task outputs no longer auto-open inline in the task details pane
 - Changed task output previews to inline only up to 50KB, with larger logs requiring an explicit download before opening
 - Updated the large-log task pane action to show download state and switch to `Show Log` after the file is saved locally
+- Add Github PR link to build details page.
+- Add infinite scroll to the builds list.
+- Add selectable mass cancellation in the builds list.
+
 
 ## 0.0.12
 
