@@ -39,6 +39,7 @@
     currentTask: null,
     currentArtifacts: [],
     currentArtifactsMeta: null,
+    artifactDownloadsInFlight: {},
     artifactTargetFolder: "",
     artifactNotice: "",
     navState: null
@@ -876,7 +877,7 @@
         <button id="build-page-back" class="button button--ghost">Back</button>
       </div>
       <div class="build-page__link-row">
-        <a class="build-page__link eyebrow" href="${escapeAttr(buildWebUrl())}" target="_blank" rel="noreferrer">Open In Azure DevOps</a>
+        ${renderBuildPageLink("Open In Azure DevOps", buildWebUrl())}
       </div>
       <div class="build-page__subtitle muted"${buildCommitMessageTitle(state.currentBuild.commitMessage, 70)}>${escapeHtml(truncateCommitMessage(state.currentBuild.commitMessage, 70))}</div>
       <details class="build-summary" open>
@@ -889,6 +890,7 @@
           ${detailCard("Requester", state.currentBuild.requestedFor || "n/a")}
           ${detailCard("Repository", state.currentBuild.repository || "n/a")}
           ${detailCard("Reason", state.currentBuild.reason || "n/a")}
+          ${detailLinkCard("Pull Request", githubPullRequestLabel(), githubPullRequestUrl())}
           ${detailCard("Started", formatDate(state.currentBuild.queueTime))}
         </div>
       </details>
@@ -911,6 +913,19 @@
     document.getElementById("build-artifacts-button").addEventListener("click", () => {
       void loadArtifacts(false);
     });
+    for (const link of elements.buildList.querySelectorAll("[data-external-url]")) {
+      link.addEventListener("click", (event) => {
+        event.preventDefault();
+        const url = link.getAttribute("data-external-url");
+        if (!url) {
+          return;
+        }
+        vscode.postMessage({
+          type: "openExternalUrl",
+          url
+        });
+      });
+    }
     const taskFilter = document.getElementById("task-filter");
     if (taskFilter) {
       const applyTaskFilter = () => {
@@ -970,6 +985,81 @@
     return `${org}/${project}/_build/results?buildId=${buildId}`;
   }
 
+  function renderBuildPageLink(label, url) {
+    if (!url) {
+      return "";
+    }
+    return `<a class="build-page__link eyebrow" href="${escapeAttr(url)}" data-external-url="${escapeAttr(url)}">${escapeHtml(label)}</a>`;
+  }
+
+  function githubPullRequestLabel() {
+    const prNumber = githubPullRequestNumber(state.currentBuild);
+    return prNumber ? `#${prNumber}` : "";
+  }
+
+  function githubPullRequestUrl() {
+    const build = state.currentBuild;
+    if (!build || String(build.reason || "").toLowerCase() !== "pullrequest") {
+      return "";
+    }
+    const repositoryType = String(build.repositoryType || "");
+    const providerId = String(build.triggerInfo?.["pr.providerId"] || "");
+    if (repositoryType.toLowerCase() !== "github" && providerId.toLowerCase() !== "github") {
+      return "";
+    }
+    const repoSlug = githubRepoSlug(build);
+    const prNumber = githubPullRequestNumber(build);
+    if (!repoSlug || !prNumber) {
+      return "";
+    }
+    return `https://github.com/${repoSlug}/pull/${encodeURIComponent(prNumber)}`;
+  }
+
+  function githubRepoSlug(build) {
+    const repositoryId = String(build.repositoryId || "").trim();
+    if (/^[^/]+\/[^/]+$/.test(repositoryId)) {
+      return repositoryId;
+    }
+    const repositoryUrl = normalizeGithubRepositoryUrl(build.repositoryUrl);
+    if (!repositoryUrl) {
+      return "";
+    }
+    try {
+      const parsed = new URL(repositoryUrl);
+      const parts = parsed.pathname.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean);
+      if (parts.length >= 2) {
+        return `${parts[0]}/${parts[1].replace(/\.git$/i, "")}`;
+      }
+    } catch {
+      return "";
+    }
+    return "";
+  }
+
+  function normalizeGithubRepositoryUrl(value) {
+    const raw = String(value || "").trim();
+    if (!raw) {
+      return "";
+    }
+    if (raw.startsWith("https://github.com:")) {
+      return raw.replace("https://github.com:", "https://github.com/");
+    }
+    if (raw.startsWith("http://github.com:")) {
+      return raw.replace("http://github.com:", "http://github.com/");
+    }
+    return raw;
+  }
+
+  function githubPullRequestNumber(build) {
+    const direct = String(build.triggerInfo?.["pr.number"] || "").trim();
+    if (/^\d+$/.test(direct)) {
+      return direct;
+    }
+    const sourceBranch = String(build.sourceBranch || "");
+    const match = sourceBranch.match(/^refs\/pull\/(\d+)\/(?:merge|head)$/i);
+    return match?.[1] || "";
+  }
+
   async function openTaskPane(taskName, logId, logLineCount = 0, taskStatusClass = "task-row__dot--neutral", taskStartTime = "", taskFinishTime = "", forceRefresh = false) {
     state.currentTask = {
       taskName,
@@ -988,7 +1078,7 @@
     elements.detailBody.className = "detail-pane";
     elements.detailBody.innerHTML = `
       <div class="task-pane">
-        <div class="banner">Loading task output...</div>
+        <div class="banner">${forceRefresh ? "Downloading task output..." : "Loading task output..."}</div>
       </div>
     `;
     const info = await apiGet(`/api/builds/${state.currentBuild.id}/logs/${logId}/meta?orgUrl=${encodeURIComponent(state.orgUrl)}&project=${encodeURIComponent(state.selectedProject)}`);
@@ -1000,7 +1090,7 @@
             <div class="definition-builds-meta muted">${formatTaskTiming(taskStartTime, taskFinishTime)} · ${info.cached ? "cached" : "not downloaded"} · ${formatTaskLogMeta(info.sizeBytes, info.lineCount || logLineCount)}</div>
             ${renderInlineCachePill(info.cached, info.lastRefresh, "Refresh task output")}
           </div>
-          <div class="banner">Task output is larger than 1MB.</div>
+          <div class="banner">Task output is larger than 50KB.</div>
           ${info.downloadPath ? `
             <div class="detail-card">
               <p class="eyebrow">Local Path</p>
@@ -1010,37 +1100,21 @@
               <button id="task-show-log-button" class="button button--primary">Show Log</button>
             </div>
           ` : `
-            <button id="task-download-button" class="button button--primary">Download Task Output</button>
-            <div id="task-download-progress" class="progress-wrap is-hidden">
-              <div class="progress-meta">
-                <span>Downloading task output</span>
-                <span id="task-download-label">Starting</span>
-              </div>
-              <div class="progress-bar"><div id="task-download-bar" class="progress-bar__fill progress-bar__fill--indeterminate"></div></div>
+            <div class="button-row">
+              <button id="task-download-button" class="button button--primary">Download</button>
             </div>
           `}
         </div>
       `;
-      bindInlineTaskCachePill(taskName, logId, logLineCount, taskStatusClass);
-      const downloadButton = document.getElementById("task-download-button");
-      if (downloadButton) {
-        downloadButton.addEventListener("click", async () => {
-          const progress = document.getElementById("task-download-progress");
-          const label = document.getElementById("task-download-label");
-          progress.classList.remove("is-hidden");
-          label.textContent = "Downloading";
-          await openTaskPane(taskName, logId, logLineCount, taskStatusClass, taskStartTime, taskFinishTime, true);
-        });
-      }
-      const showButton = document.getElementById("task-show-log-button");
-      if (showButton && info.downloadPath) {
-        showButton.addEventListener("click", () => {
-          vscode.postMessage({
-            type: "openLogFile",
-            path: info.downloadPath
-          });
-        });
-      }
+      bindTaskPaneActions({
+        taskName,
+        logId,
+        logLineCount,
+        taskStatusClass,
+        taskStartTime,
+        taskFinishTime,
+        downloadPath: info.downloadPath
+      });
       return;
     }
 
@@ -1062,7 +1136,7 @@
             <div class="definition-builds-meta muted">${formatTaskTiming(taskStartTime, taskFinishTime)} · ${response.downloadPath ? (response.cached ? "cached" : "fresh") : "not downloaded"} · ${formatBytes(response.sizeBytes)}</div>
             ${renderInlineCachePill(response.cached, response.lastRefresh, "Refresh task output")}
           </div>
-          <div class="banner">Task output is larger than 1MB.</div>
+          <div class="banner">Task output is larger than 50KB.</div>
           ${response.downloadPath ? `
             <div class="detail-card">
               <p class="eyebrow">Local Path</p>
@@ -1072,42 +1146,31 @@
               <button id="task-show-log-button" class="button button--primary">Show Log</button>
             </div>
           ` : `
-            <button id="task-download-button" class="button button--primary">Download Task Output</button>
-            <div id="task-download-progress" class="progress-wrap is-hidden">
-              <div class="progress-meta">
-                <span>Downloading task output</span>
-                <span id="task-download-label">Starting</span>
-              </div>
-              <div class="progress-bar"><div id="task-download-bar" class="progress-bar__fill progress-bar__fill--indeterminate"></div></div>
+            <div class="button-row">
+              <button id="task-download-button" class="button button--primary">Download</button>
             </div>
           `}
         </div>
       `;
-    bindInlineTaskCachePill(taskName, logId, logLineCount, taskStatusClass, taskStartTime, taskFinishTime);
-    const downloadButton = document.getElementById("task-download-button");
-    if (downloadButton) {
-      downloadButton.addEventListener("click", async () => {
-        const progress = document.getElementById("task-download-progress");
-        const label = document.getElementById("task-download-label");
-        progress.classList.remove("is-hidden");
-        label.textContent = "Downloading";
-        await openTaskPane(taskName, logId, logLineCount, taskStatusClass, taskStartTime, taskFinishTime, true);
-      });
-    }
-    const showButton = document.getElementById("task-show-log-button");
-    if (showButton && response.downloadPath) {
-      showButton.addEventListener("click", () => {
-        vscode.postMessage({
-          type: "openLogFile",
-          path: response.downloadPath
-        });
-      });
-    }
+    bindTaskPaneActions({
+      taskName,
+      logId,
+      logLineCount,
+      taskStatusClass,
+      taskStartTime,
+      taskFinishTime,
+      downloadPath: response.downloadPath
+    });
   }
 
   async function loadArtifacts(forceRefresh) {
     const response = await apiGet(`/api/builds/${state.currentBuild.id}/artifacts?orgUrl=${encodeURIComponent(state.orgUrl)}&project=${encodeURIComponent(state.selectedProject)}${forceRefresh ? "&refresh=1" : ""}`);
     state.currentArtifacts = response.artifacts;
+    for (const artifact of state.currentArtifacts) {
+      if (artifact.downloadedPath) {
+        delete state.artifactDownloadsInFlight[artifact.name];
+      }
+    }
     state.currentArtifactsMeta = response;
     openArtifactsPane();
   }
@@ -1175,7 +1238,7 @@
         </div>
         ${artifact.downloadedPath
           ? `<div class="artifact-item__downloaded" title="Downloaded">✓</div>`
-          : `<button class="button button--primary" data-artifact-name="${escapeAttr(artifact.name)}">Download</button>`}
+          : `<button class="button button--primary${state.artifactDownloadsInFlight[artifact.name] ? " is-disabled" : ""}" data-artifact-name="${escapeAttr(artifact.name)}" ${state.artifactDownloadsInFlight[artifact.name] ? "disabled" : ""}>${state.artifactDownloadsInFlight[artifact.name] ? "Downloading..." : "Download"}</button>`}
       </div>
     `).join("");
     for (const button of host.querySelectorAll("[data-artifact-name]")) {
@@ -1191,12 +1254,29 @@
       openArtifactsPane();
       return;
     }
+    if (state.artifactDownloadsInFlight[artifactName]) {
+      return;
+    }
+    state.artifactDownloadsInFlight[artifactName] = true;
     state.artifactNotice = "";
-    const response = await apiPost(`/api/builds/${state.currentBuild.id}/artifacts/download?orgUrl=${encodeURIComponent(state.orgUrl)}&project=${encodeURIComponent(state.selectedProject)}`, {
-      artifactName,
-      targetFolder: state.artifactTargetFolder
-    });
-    await loadArtifacts(true);
+    renderArtifactList();
+    try {
+      const response = await apiPost(`/api/builds/${state.currentBuild.id}/artifacts/download?orgUrl=${encodeURIComponent(state.orgUrl)}&project=${encodeURIComponent(state.selectedProject)}`, {
+        artifactName,
+        targetFolder: state.artifactTargetFolder
+      });
+      const artifact = state.currentArtifacts.find((item) => item.name === response.artifactName);
+      if (artifact) {
+        artifact.downloadedPath = response.savedPath;
+      }
+      delete state.artifactDownloadsInFlight[artifactName];
+      renderArtifactList();
+      await loadArtifacts(true);
+    } catch (error) {
+      delete state.artifactDownloadsInFlight[artifactName];
+      renderArtifactList();
+      throw error;
+    }
   }
 
   function closeTaskPane() {
@@ -1838,6 +1918,43 @@
     });
   }
 
+  function bindTaskPaneActions({
+    taskName,
+    logId,
+    logLineCount,
+    taskStatusClass,
+    taskStartTime,
+    taskFinishTime,
+    downloadPath
+  }) {
+    bindInlineTaskCachePill(taskName, logId, logLineCount, taskStatusClass, taskStartTime, taskFinishTime);
+    const downloadButton = document.getElementById("task-download-button");
+    if (downloadButton) {
+      downloadButton.addEventListener("click", async () => {
+        downloadButton.disabled = true;
+        downloadButton.classList.add("is-disabled");
+        downloadButton.textContent = "Downloading...";
+        try {
+          await openTaskPane(taskName, logId, logLineCount, taskStatusClass, taskStartTime, taskFinishTime, true);
+        } catch (error) {
+          downloadButton.disabled = false;
+          downloadButton.classList.remove("is-disabled");
+          downloadButton.textContent = "Download";
+          renderBanner(error?.message || String(error));
+        }
+      });
+    }
+    const showButton = document.getElementById("task-show-log-button");
+    if (showButton && downloadPath) {
+      showButton.addEventListener("click", () => {
+        vscode.postMessage({
+          type: "openLogFile",
+          path: downloadPath
+        });
+      });
+    }
+  }
+
   function setCachePill(element, cached, lastRefresh, title, prefix) {
     element.title = title;
     if (cached === null || cached === undefined) {
@@ -1860,6 +1977,13 @@
     const text = String(value || "n/a");
     const valueClass = isTechnicalValue(text) ? "detail-card__value detail-card__value--technical" : "detail-card__value";
     return `<div class="detail-card"><p class="eyebrow">${escapeHtml(label)}</p><div class="${valueClass}" title="${escapeAttr(text)}">${escapeHtml(text)}</div></div>`;
+  }
+
+  function detailLinkCard(label, value, url) {
+    if (!url || !value) {
+      return "";
+    }
+    return `<div class="detail-card"><p class="eyebrow">${escapeHtml(label)}</p><a class="detail-card__value detail-card__value--technical build-page__link" href="${escapeAttr(url)}" data-external-url="${escapeAttr(url)}" title="${escapeAttr(value)}">${escapeHtml(value)}</a></div>`;
   }
 
   function isTechnicalValue(value) {

@@ -45,13 +45,18 @@ export interface RelayBuildSummary {
   startTime?: string;
   finishTime?: string;
   sourceBranch?: string;
+  sourceVersion?: string;
   requestedFor?: string;
 }
 
 export interface RelayBuildDetails extends RelayBuildSummary {
   projectName: string;
   repository?: string;
+  repositoryId?: string;
+  repositoryType?: string;
+  repositoryUrl?: string;
   reason?: string;
+  triggerInfo?: Record<string, string>;
   lastRefresh: string;
   cached: boolean;
 }

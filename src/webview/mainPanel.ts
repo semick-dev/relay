@@ -58,7 +58,7 @@ export class RelayMainPanel {
       return;
     }
 
-    const typed = message as { type?: string; state?: Partial<RelayPersistedState>; title?: string; path?: string };
+    const typed = message as { type?: string; state?: Partial<RelayPersistedState>; title?: string; path?: string; url?: string };
     if (typed.type === "persistState" && typed.state) {
       const current = this.getState();
       const next: RelayPersistedState = {
@@ -94,6 +94,11 @@ export class RelayMainPanel {
         preview: false,
         viewColumn: vscode.ViewColumn.Beside
       });
+      return;
+    }
+
+    if (typed.type === "openExternalUrl" && typeof typed.url === "string" && typed.url) {
+      await vscode.env.openExternal(vscode.Uri.parse(typed.url));
     }
   }
 

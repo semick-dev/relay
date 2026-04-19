@@ -128,6 +128,7 @@ Important behaviors:
 - cache pills are the refresh affordance
 - queueing a YAML-backed definition navigates directly to the queued build details page on success
 - visible errors in the panel are dismissible
+- GitHub pull-request builds can derive an `Open Pull Request` action from cached build metadata: `repositoryId`/`repositoryUrl`, `reason = pullRequest`, and `triggerInfo["pr.number"]` with `refs/pull/<n>/...` as fallback
 
 ## Backend Layout
 
@@ -188,6 +189,7 @@ It owns:
 Important implementation details:
 
 - build list rows get commit messages from `builds/{id}/changes`
+- build details now persist extra source metadata needed for PR derivation: `sourceVersion`, `repository.id/type/url`, and string-valued `triggerInfo`
 - queueable variables are filtered to `allowOverride`
 - YAML parameter metadata is currently derived from `POST /_apis/pipelines/{id}/preview`
 - queue submission uses `templateParameters` plus `variables`
@@ -416,6 +418,7 @@ Themes:
 - artifacts open in the right 50% pane
 - user chooses target folder via host dialog
 - each artifact shows download state
+- clicking `Download` immediately disables the artifact button and switches it to `Downloading...` until the saved-path state comes back, then the row flips to the green downloaded check
 - downloaded artifact state is persisted under `artifacts-downloads.json`
 - if saved file disappears from disk, backend clears stale download state
 

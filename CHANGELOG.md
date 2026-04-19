@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.13
+
+- Fixed task log loading so large task outputs no longer auto-open inline in the task details pane
+- Changed task output previews to inline only up to 50KB, with larger logs requiring an explicit download before opening
+- Updated the large-log task pane action to show download state and switch to `Show Log` after the file is saved locally
+
 ## 0.0.12
 
 - Reused cached build definitions across Relay sessions instead of forcing a full definitions reload after the short in-memory freshness window elapsed

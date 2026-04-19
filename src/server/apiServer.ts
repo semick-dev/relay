@@ -38,7 +38,7 @@ const TTL_SECONDS = {
   definitions: 900
 } as const;
 
-const INLINE_TASK_LOG_LIMIT_BYTES = 1024 * 1024;
+export const INLINE_TASK_LOG_LIMIT_BYTES = 50 * 1024;
 
 interface DefinitionsJob {
   running: boolean;
@@ -496,10 +496,10 @@ export class RelayApiServer {
       if (!forceRefresh) {
         const probe = await this.adoClient.getLog(orgUrl, project, buildId, logId, {
           startByte: 0,
-          endByte: INLINE_TASK_LOG_LIMIT_BYTES
+          endByte: INLINE_TASK_LOG_LIMIT_BYTES - 1
         });
-        const sizeBytes = probe.totalSize ?? probe.contentBytes;
-        if (sizeBytes > INLINE_TASK_LOG_LIMIT_BYTES) {
+        const probeDecision = resolveTaskLogProbeDecision(probe);
+        if (probeDecision.shouldDelayDownload) {
           return {
             ok: true as const,
             buildId,
@@ -507,14 +507,14 @@ export class RelayApiServer {
             cached: false,
             lastRefresh: new Date().toISOString(),
             inline: false,
-            sizeBytes
+            sizeBytes: probeDecision.sizeBytes
           };
         }
 
         const timestamp = new Date().toISOString();
         await this.storage.writeBuildTimestamp(buildId, timestamp);
         await this.storage.writeBuildText(buildId, relativePath, probe.content);
-        return this.buildTaskLogResponse(buildId, logId, false, timestamp, probe.content, relativePath, sizeBytes);
+        return this.buildTaskLogResponse(buildId, logId, false, timestamp, probe.content, relativePath, probeDecision.sizeBytes);
       }
 
       const full = await this.adoClient.getLog(orgUrl, project, buildId, logId);
@@ -547,11 +547,7 @@ export class RelayApiServer {
     const record = findTimelineNodeByLogId(timeline.timeline, logId);
     const lastRefresh = await this.storage.readBuildTimestamp(buildId) ?? build.build.lastRefresh;
     const lineCount = record?.logLineCount;
-    const isLarge = typeof sizeBytes === "number"
-      ? sizeBytes >= 1024 * 1024
-      : typeof lineCount === "number"
-        ? estimateLargeLog(lineCount)
-        : false;
+    const isLarge = shouldDelayTaskLogDownload(sizeBytes, lineCount);
 
     return {
       ok: true,
@@ -914,4 +910,31 @@ function estimateLargeLog(lineCount?: number): boolean {
     return false;
   }
   return lineCount >= 8000;
+}
+
+export function shouldDelayTaskLogDownload(sizeBytes?: number | null, lineCount?: number): boolean {
+  if (typeof sizeBytes === "number") {
+    return sizeBytes > INLINE_TASK_LOG_LIMIT_BYTES;
+  }
+  return estimateLargeLog(lineCount);
+}
+
+export function resolveTaskLogProbeDecision(probe: {
+  contentBytes: number;
+  totalSize?: number;
+}): {
+  sizeBytes: number;
+  shouldDelayDownload: boolean;
+} {
+  const sizeBytes = probe.totalSize ?? probe.contentBytes;
+  if (typeof probe.totalSize === "number") {
+    return {
+      sizeBytes,
+      shouldDelayDownload: probe.totalSize > INLINE_TASK_LOG_LIMIT_BYTES
+    };
+  }
+  return {
+    sizeBytes,
+    shouldDelayDownload: probe.contentBytes >= INLINE_TASK_LOG_LIMIT_BYTES
+  };
 }

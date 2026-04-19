@@ -75,7 +75,11 @@ export class RelayAdoClient {
       ...mapBuildSummary(payload),
       projectName: payload.project?.name ?? project,
       repository: payload.repository?.name,
+      repositoryId: payload.repository?.id,
+      repositoryType: payload.repository?.type,
+      repositoryUrl: payload.repository?.url,
       reason: payload.reason,
+      triggerInfo: mapTriggerInfo(payload.triggerInfo),
       cached: false,
       lastRefresh: new Date().toISOString()
     };
@@ -487,8 +491,19 @@ function mapBuildSummary(build: AdoBuild): RelayBuildSummary {
     startTime: build.startTime,
     finishTime: build.finishTime,
     sourceBranch: build.sourceBranch,
+    sourceVersion: build.sourceVersion,
     requestedFor: build.requestedFor?.displayName
   };
+}
+
+function mapTriggerInfo(triggerInfo?: Record<string, unknown>): Record<string, string> | undefined {
+  if (!triggerInfo) {
+    return undefined;
+  }
+  const entries = Object.entries(triggerInfo)
+    .filter(([, value]) => typeof value === "string" && value.length > 0)
+    .map(([key, value]) => [key, value]);
+  return entries.length ? Object.fromEntries(entries) : undefined;
 }
 
 interface AdoProjectsResponse {
@@ -598,8 +613,10 @@ interface AdoBuild {
   startTime?: string;
   finishTime?: string;
   sourceBranch?: string;
+  sourceVersion?: string;
   sourceVersionMessage?: string;
   reason?: string;
+  triggerInfo?: Record<string, unknown>;
   definition?: {
     id?: number;
     name?: string;
@@ -608,7 +625,10 @@ interface AdoBuild {
     name?: string;
   };
   repository?: {
+    id?: string;
     name?: string;
+    type?: string;
+    url?: string;
   };
   requestedFor?: {
     displayName?: string;

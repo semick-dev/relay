@@ -2,7 +2,7 @@
   "name": "ado-relay",
   "displayName": "Azure DevOps Relay",
   "description": "An Azure DevOps interface.",
-  "version": "0.0.12",
+  "version": "0.0.13",
   "publisher": "semick-dev",
   "license": "MIT",
   "repository": {
@@ -75,6 +75,7 @@
   },
   "scripts": {
     "build": "tsc -p .",
+    "test": "vitest run",
     "watch": "tsc -w -p .",
     "vscode:prepublish": "npm run build",
     "marketplace:package": "npx @vscode/vsce package",
@@ -83,7 +84,8 @@
   "devDependencies": {
     "@types/node": "^22.15.17",
     "@types/vscode": "^1.100.0",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
   },
   "dependencies": {
     "yaml": "^2.8.3"
