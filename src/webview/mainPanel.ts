@@ -6,11 +6,11 @@ const STATE_KEY = "relay.uiState";
 
 export class RelayMainPanel {
   private panel?: vscode.WebviewPanel;
+  private apiBase = "";
+  private serverReady = false;
+  private serverMessage = "Starting local Relay API...";
 
-  constructor(
-    private readonly context: vscode.ExtensionContext,
-    private readonly apiBase: string
-  ) {}
+  constructor(private readonly context: vscode.ExtensionContext) {}
 
   open(project?: string, view: RelaySubview = "builds"): void {
     if (this.panel) {
@@ -50,6 +50,25 @@ export class RelayMainPanel {
     this.panel?.webview.postMessage({
       type: "themeChanged",
       themeId
+    });
+  }
+
+  postServerReady(apiBase: string): void {
+    this.apiBase = apiBase;
+    this.serverReady = true;
+    this.serverMessage = "";
+    this.panel?.webview.postMessage({
+      type: "serverReady",
+      apiBase
+    });
+  }
+
+  postServerError(message: string): void {
+    this.serverReady = false;
+    this.serverMessage = message;
+    this.panel?.webview.postMessage({
+      type: "serverError",
+      message
     });
   }
 
@@ -106,8 +125,10 @@ export class RelayMainPanel {
     const nonce = createNonce();
     const state = this.getState();
     const bootstrap: RelayPanelBootstrap = {
-      apiBase: this.apiBase,
-      telemetryBase: this.apiBase,
+      apiBase: this.apiBase || undefined,
+      telemetryBase: this.apiBase || undefined,
+      serverReady: this.serverReady,
+      serverMessage: this.serverMessage || undefined,
       savedState: state,
       themeIds: ["githubdark", "neon", "nightwave", "ember"],
       themeUrls: {
@@ -143,6 +164,13 @@ export class RelayMainPanel {
 <body class="relay-panel">
   <main class="content content--main panel-shell" id="content">
     <section id="main-panel" class="panel panel--main">
+      <div id="panel-blocker" class="startup-blocker${this.serverReady ? " is-hidden" : ""}">
+        <div class="startup-blocker__panel">
+          <div class="spinner" aria-hidden="true"></div>
+          <div class="startup-blocker__title">Starting Relay</div>
+          <div id="panel-blocker-message" class="startup-blocker__message">${escapeHtml(this.serverMessage || "Starting local Relay API...")}</div>
+        </div>
+      </div>
       <span id="main-status-corner" class="panel-corner is-hidden" aria-hidden="true"></span>
       <div class="panel__header">
         <div>
@@ -192,6 +220,15 @@ export class RelayMainPanel {
       orgUrl: stored?.orgUrl ?? ""
     };
   }
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 function createNonce(): string {

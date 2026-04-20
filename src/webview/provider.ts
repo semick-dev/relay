@@ -12,10 +12,12 @@ const DEFAULT_STATE: RelayPersistedState = {
 export class RelaySidebarProvider implements vscode.WebviewViewProvider, vscode.Disposable {
   private view?: vscode.WebviewView;
   private disposables: vscode.Disposable[] = [];
+  private apiBase = "";
+  private serverReady = false;
+  private serverMessage = "Starting local Relay API...";
 
   constructor(
     private readonly context: vscode.ExtensionContext,
-    private readonly apiBase: string,
     private readonly onOpenProject: (project: string, view: RelaySubview) => void,
     private readonly onThemeChange: (theme: ThemeId) => void
   ) {}
@@ -36,6 +38,25 @@ export class RelaySidebarProvider implements vscode.WebviewViewProvider, vscode.
 
   notifyAuthChanged(): void {
     this.view?.webview.postMessage({ type: "authChanged" });
+  }
+
+  postServerReady(apiBase: string): void {
+    this.apiBase = apiBase;
+    this.serverReady = true;
+    this.serverMessage = "";
+    this.view?.webview.postMessage({
+      type: "serverReady",
+      apiBase
+    });
+  }
+
+  postServerError(message: string): void {
+    this.serverReady = false;
+    this.serverMessage = message;
+    this.view?.webview.postMessage({
+      type: "serverError",
+      message
+    });
   }
 
   dispose(): void {
@@ -94,8 +115,10 @@ export class RelaySidebarProvider implements vscode.WebviewViewProvider, vscode.
   private renderHtml(webview: vscode.Webview): string {
     const nonce = createNonce();
     const bootstrap: RelayBootstrap = {
-      apiBase: this.apiBase,
-      telemetryBase: this.apiBase,
+      apiBase: this.apiBase || undefined,
+      telemetryBase: this.apiBase || undefined,
+      serverReady: this.serverReady,
+      serverMessage: this.serverMessage || undefined,
       savedState: this.getState(),
       themeIds: ["githubdark", "neon", "nightwave", "ember"],
       themeUrls: {
@@ -129,6 +152,13 @@ export class RelaySidebarProvider implements vscode.WebviewViewProvider, vscode.
 <body>
   <div id="app" class="sidebar-shell">
     <aside class="sidebar sidebar--standalone">
+      <div id="sidebar-blocker" class="startup-blocker${this.serverReady ? " is-hidden" : ""}">
+        <div class="startup-blocker__panel">
+          <div class="spinner" aria-hidden="true"></div>
+          <div class="startup-blocker__title">Starting Relay</div>
+          <div id="sidebar-blocker-message" class="startup-blocker__message">${escapeHtml(this.serverMessage || "Starting local Relay API...")}</div>
+        </div>
+      </div>
       <div class="sidebar__header">
         <p class="eyebrow">Azure DevOps</p>
         <h1>Azure DevOps Relay</h1>
@@ -172,6 +202,15 @@ export class RelaySidebarProvider implements vscode.WebviewViewProvider, vscode.
       orgUrl: stored?.orgUrl ?? DEFAULT_STATE.orgUrl
     };
   }
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 function createNonce(): string {

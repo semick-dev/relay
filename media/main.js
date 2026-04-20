@@ -3,6 +3,9 @@
   const bootstrap = window.__RELAY_BOOTSTRAP__;
 
   const state = {
+    serverReady: Boolean(bootstrap.serverReady && bootstrap.apiBase),
+    serverMessage: bootstrap.serverMessage || "Starting local Relay API...",
+    hydrated: false,
     orgUrl: bootstrap.savedState.orgUrl || "",
     activeTheme: bootstrap.savedState.activeTheme || "githubdark",
     authConfigured: true,
@@ -17,13 +20,33 @@
     cachePill: document.getElementById("cache-pill"),
     messageBanner: document.getElementById("message-banner"),
     themeList: document.getElementById("theme-list"),
-    themeCss: document.getElementById("theme-css")
+    themeCss: document.getElementById("theme-css"),
+    blocker: document.getElementById("sidebar-blocker"),
+    blockerMessage: document.getElementById("sidebar-blocker-message")
   };
 
   window.addEventListener("message", (event) => {
     const msg = event.data;
     if (msg && msg.type === "authChanged") {
+      if (!state.serverReady) {
+        return;
+      }
       recheckAuth();
+      return;
+    }
+    if (msg && msg.type === "serverReady" && typeof msg.apiBase === "string" && msg.apiBase) {
+      bootstrap.apiBase = msg.apiBase;
+      bootstrap.telemetryBase = msg.apiBase;
+      state.serverReady = true;
+      state.serverMessage = "";
+      setStartupState(true);
+      void hydrateAfterServerReady().catch(renderSidebarError);
+      return;
+    }
+    if (msg && msg.type === "serverError") {
+      state.serverReady = false;
+      state.serverMessage = msg.message || "Unable to start local Relay API.";
+      setStartupState(false, state.serverMessage);
     }
   });
 
@@ -36,6 +59,17 @@
     bindEvents();
     renderThemes();
     applyTheme(state.activeTheme);
+    setStartupState(state.serverReady, state.serverMessage);
+    if (state.serverReady) {
+      await hydrateAfterServerReady();
+    }
+  }
+
+  async function hydrateAfterServerReady() {
+    if (!state.serverReady || state.hydrated) {
+      return;
+    }
+    state.hydrated = true;
     await emit("relay.ui.sidebar.boot", { activeTheme: state.activeTheme }, "span");
     const session = await apiGet("/api/session");
     setAuthState(session.authConfigured, session.message);
@@ -57,7 +91,7 @@
   }
 
   async function loadProjects(forceRefresh) {
-    if (!state.authConfigured || state.loadingProjects) {
+    if (!state.serverReady || !state.authConfigured || state.loadingProjects) {
       return;
     }
 
@@ -179,6 +213,9 @@
   }
 
   async function apiGet(path) {
+    if (!bootstrap.apiBase) {
+      throw new Error(state.serverMessage || "Relay API is still starting.");
+    }
     const response = await fetch(`${bootstrap.apiBase}${path}`);
     const payload = await response.json();
     if (!response.ok || payload.ok === false) {
@@ -188,6 +225,9 @@
   }
 
   async function emit(name, attributes, kind = "log") {
+    if (!bootstrap.telemetryBase) {
+      return;
+    }
     try {
       await fetch(`${bootstrap.telemetryBase}/api/telemetry`, {
         method: "POST",
@@ -207,6 +247,23 @@
 
   function setCachePill(cached, lastRefresh) {
     elements.cachePill.textContent = `${cached ? "Cached" : "Fresh"} · ${formatDate(lastRefresh)}`;
+  }
+
+  function setStartupState(isReady, message) {
+    elements.orgUrl.disabled = !isReady || !state.authConfigured;
+    elements.connectButton.disabled = !isReady || state.loadingProjects || !state.authConfigured;
+    elements.cachePill.classList.toggle("is-disabled", !isReady);
+    elements.projectList.classList.toggle("is-starting", !isReady);
+    if (elements.blockerMessage) {
+      elements.blockerMessage.textContent = message || "Starting local Relay API...";
+    }
+    if (elements.blocker) {
+      elements.blocker.classList.toggle("is-hidden", isReady);
+    }
+    if (!isReady) {
+      elements.cachePill.textContent = "Starting API";
+      elements.projectList.innerHTML = '<div class="empty-state empty-state--compact">Relay is starting...</div>';
+    }
   }
 
   function renderBanner(errorState) {

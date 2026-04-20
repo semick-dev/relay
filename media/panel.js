@@ -4,6 +4,9 @@
   let definitionBuildListObserver = null;
 
   const state = {
+    serverReady: Boolean(bootstrap.serverReady && bootstrap.apiBase),
+    serverMessage: bootstrap.serverMessage || "Starting local Relay API...",
+    hydrated: false,
     orgUrl: bootstrap.savedState.orgUrl || "",
     activeTheme: bootstrap.savedState.activeTheme || "githubdark",
     selectedProject: bootstrap.initialProject || "",
@@ -72,11 +75,31 @@
     detailCachePill: document.getElementById("detail-cache-pill"),
     closeDetail: document.getElementById("close-detail"),
     themeCss: document.getElementById("theme-css"),
-    toolbar: document.getElementById("toolbar")
+    toolbar: document.getElementById("toolbar"),
+    blocker: document.getElementById("panel-blocker"),
+    blockerMessage: document.getElementById("panel-blocker-message")
   };
 
   window.addEventListener("message", (event) => {
     const message = event.data || {};
+    if (message.type === "serverReady" && typeof message.apiBase === "string" && message.apiBase) {
+      bootstrap.apiBase = message.apiBase;
+      bootstrap.telemetryBase = message.apiBase;
+      state.serverReady = true;
+      state.serverMessage = "";
+      setStartupState(true);
+      void hydrateAfterServerReady().catch((error) => {
+        renderBanner(error.message || String(error));
+      });
+      return;
+    }
+    if (message.type === "serverError") {
+      state.serverReady = false;
+      state.serverMessage = message.message || "Unable to start local Relay API.";
+      setStartupState(false, state.serverMessage);
+      renderBanner(state.serverMessage);
+      return;
+    }
     if (message.type === "openProject" && typeof message.project === "string") {
       void openProject(message.project, message.view || "definitions");
     }
@@ -105,9 +128,21 @@
   async function init() {
     bindEvents();
     applyTheme(state.activeTheme);
+    setStartupState(state.serverReady, state.serverMessage);
+    if (state.serverReady) {
+      await hydrateAfterServerReady();
+    }
+  }
+
+  async function hydrateAfterServerReady() {
+    if (!state.serverReady || state.hydrated) {
+      return;
+    }
+    state.hydrated = true;
     await emit("relay.ui.panel.boot", { activeTheme: state.activeTheme }, "span");
     if (!state.orgUrl) {
       renderBanner("No organization URL is set. Use the Azure DevOps Relay sidebar first.");
+      elements.mainStatus.textContent = "Use the sidebar to set an organization URL.";
       return;
     }
     const session = await apiGet("/api/session");
@@ -131,6 +166,28 @@
     elements.detailCachePill.addEventListener("click", () => {
       void refreshDetailPane();
     });
+  }
+
+  function setStartupState(isReady, message) {
+    if (elements.blockerMessage) {
+      elements.blockerMessage.textContent = message || "Starting local Relay API...";
+    }
+    if (elements.blocker) {
+      elements.blocker.classList.toggle("is-hidden", isReady);
+    }
+    elements.mainCachePill.disabled = !isReady;
+    elements.detailCachePill.disabled = !isReady;
+    elements.mainCachePill.classList.toggle("is-disabled", !isReady);
+    elements.detailCachePill.classList.toggle("is-disabled", !isReady);
+    if (!isReady) {
+      elements.mainKind.textContent = "Starting";
+      elements.mainTitle.textContent = "Azure DevOps Relay";
+      elements.mainStatus.textContent = message || "Starting local Relay API...";
+      elements.buildList.className = "build-list empty-state";
+      elements.buildList.textContent = "Relay is starting...";
+      elements.detailPanel.classList.add("is-hidden");
+      elements.content.classList.remove("is-split");
+    }
   }
 
   async function openProject(project, view) {
@@ -2162,6 +2219,9 @@
   }
 
   async function apiGet(path, options = {}) {
+    if (!bootstrap.apiBase) {
+      throw new Error(state.serverMessage || "Relay API is still starting.");
+    }
     const response = await fetch(`${bootstrap.apiBase}${path}`);
     const payload = await response.json();
     if (!response.ok || payload.ok === false) {
@@ -2175,6 +2235,9 @@
   }
 
   async function apiPost(path, body, options = {}) {
+    if (!bootstrap.apiBase) {
+      throw new Error(state.serverMessage || "Relay API is still starting.");
+    }
     const response = await fetch(`${bootstrap.apiBase}${path}`, {
       method: "POST",
       headers: {
@@ -2194,6 +2257,9 @@
   }
 
   async function emit(name, attributes, kind = "log") {
+    if (!bootstrap.telemetryBase) {
+      return;
+    }
     try {
       await fetch(`${bootstrap.telemetryBase}/api/telemetry`, {
         method: "POST",

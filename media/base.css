@@ -68,6 +68,39 @@ body.relay-panel #app,
   border-right: 0;
 }
 
+.startup-blocker {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--bg-1) 80%, transparent);
+  backdrop-filter: grayscale(1) blur(1px);
+}
+
+.startup-blocker__panel {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  min-width: min(320px, 100%);
+  padding: 18px 20px;
+  border: 1px solid var(--border-1);
+  background: color-mix(in srgb, var(--panel-bg-0) 92%, transparent);
+  box-shadow: var(--shadow-main);
+}
+
+.startup-blocker__title {
+  font-size: 0.95rem;
+  color: var(--fg-1);
+}
+
+.startup-blocker__message {
+  color: var(--fg-2);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
 .sidebar__header h1,
 .panel__header h2 {
   margin: 0;
@@ -166,6 +199,10 @@ input:focus {
 
 .project-list {
   max-height: calc(100vh - 330px);
+}
+
+.project-list.is-starting {
+  overflow: hidden;
 }
 
 .project-item,

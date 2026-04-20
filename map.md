@@ -54,18 +54,20 @@ On activation:
 - creates `RelayCacheStore`
 - loads ADO token from VS Code secrets
 - creates `RelayAdoClient`
-- creates and starts `RelayApiServer`
+- creates `RelayApiServer`
 - creates `RelayMainPanel`
 - registers `RelaySidebarProvider`
 - registers commands:
   - `relay.refresh`
   - `relay.setToken`
   - `relay.clearToken`
+- starts the local API server in the background and posts the resolved `apiBase` into any open webviews once the port is ready
 
 Important current behavior:
 
 - token storage is secret-backed, not environment-only
 - the sidebar can request token setup interactively
+- extension activation no longer blocks UI render on `RelayApiServer.start()`
 
 ### UI split
 
@@ -80,6 +82,13 @@ Main panel:
 - [media/panel.js](/home/semick/repo/relay/media/panel.js)
 
 Neither webview talks to Azure DevOps directly. Everything goes through the local API server.
+
+Current bootstrap behavior:
+
+- both webviews can render before the local API server has chosen a port
+- `src/shared/types.ts` bootstrap payload now includes `serverReady` plus an optional startup message
+- the extension posts `serverReady` / `serverError` messages after background server startup settles
+- `media/main.js` and `media/panel.js` keep the UI in a blocked gray startup state until `apiBase` is injected
 
 ## Current UX Model
 

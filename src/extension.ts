@@ -28,15 +28,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const adoClient = new RelayAdoClient(token);
   relayServer = new RelayApiServer(adoClient, cacheStore, storage, telemetry);
 
-  const port = await relayServer.start();
-  const apiBase = `http://127.0.0.1:${port}`;
-  const mainPanel = new RelayMainPanel(context, apiBase);
+  const mainPanel = new RelayMainPanel(context);
   const provider = new RelaySidebarProvider(
     context,
-    apiBase,
     (project, view) => mainPanel.open(project, view),
     (themeId) => mainPanel.postTheme(themeId)
   );
+
+  void startRelayServer(relayServer, mainPanel, provider, telemetry);
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider("relay.sidebar", provider),
@@ -86,6 +85,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
     }
   );
+}
+
+async function startRelayServer(
+  server: RelayApiServer,
+  mainPanel: RelayMainPanel,
+  provider: RelaySidebarProvider,
+  telemetry: RelayTelemetrySink
+): Promise<void> {
+  try {
+    const port = await server.start();
+    const apiBase = `http://127.0.0.1:${port}`;
+    provider.postServerReady(apiBase);
+    mainPanel.postServerReady(apiBase);
+    await telemetry.log("relay.api.ready", "info", { apiBase });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    provider.postServerError(message);
+    mainPanel.postServerError(message);
+    await telemetry.log("relay.api.failed", "error", { message });
+  }
 }
 
 export function deactivate(): Thenable<void> | undefined {

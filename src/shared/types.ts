@@ -8,8 +8,10 @@ export interface RelayPersistedState {
 }
 
 export interface RelayBootstrap {
-  apiBase: string;
-  telemetryBase: string;
+  apiBase?: string;
+  telemetryBase?: string;
+  serverReady: boolean;
+  serverMessage?: string;
   savedState: RelayPersistedState;
   themeIds: ThemeId[];
   themeUrls: Record<ThemeId, string>;
