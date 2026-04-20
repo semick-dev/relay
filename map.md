@@ -133,6 +133,7 @@ Current navigation shape:
 Important behaviors:
 
 - the definition detail pane splits immediately and shows loading states while build lists load
+- opening a project in `Definitions` now loads cached definitions first when available, while definitions precache continues in the background and patches fresher data in afterward
 - the build page renders immediately and shows a loading state while build details/timeline load
 - cache pills are the refresh affordance
 - queueing a YAML-backed definition navigates directly to the queued build details page on success
@@ -199,10 +200,10 @@ It owns:
 
 Important implementation details:
 
-- build list rows get commit messages from `builds/{id}/changes`
+- definition build list responses no longer fan out into `builds/{id}/changes`; rows render directly from the build summary payload and paging stays single-request per batch
 - build details now persist extra source metadata needed for PR derivation: `sourceVersion`, `repository.id/type/url`, and string-valued `triggerInfo`
 - queueable variables are filtered to `allowOverride`
-- YAML parameter metadata is currently derived from `POST /_apis/pipelines/{id}/preview`
+- YAML parameter metadata is derived from `POST /_apis/pipelines/{id}/preview`, and the `yaml` package is loaded lazily only when queue metadata / template-parameter parsing is actually used
 - queue submission uses `templateParameters` plus `variables`
 - object/list parameter textarea values are parsed with the `yaml` package before submission
 

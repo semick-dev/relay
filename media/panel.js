@@ -14,6 +14,7 @@
     selectedDefinition: null,
     definitions: [],
     definitionsLoading: false,
+    definitionsRequestId: 0,
     definitionBuildsLoading: false,
     definitionBuildsLoadingMore: false,
     definitionBuildsCancelRunning: false,
@@ -214,21 +215,68 @@
   }
 
   async function loadDefinitions(forceRefresh) {
+    const requestId = state.definitionsRequestId + 1;
+    state.definitionsRequestId = requestId;
     state.definitionsLoading = true;
-    elements.mainStatus.textContent = "Preparing build definitions...";
+    let waitingForBackgroundRefresh = false;
+    elements.mainStatus.textContent = state.definitions.length
+      ? "Refreshing build definitions..."
+      : "Preparing build definitions...";
+    renderDefinitionsToolbar();
+
     try {
-      await apiPost(`/api/projects/${encodeURIComponent(state.selectedProject)}/definitions/precache`, {
+      const status = await apiPost(`/api/projects/${encodeURIComponent(state.selectedProject)}/definitions/precache`, {
         orgUrl: state.orgUrl,
         limitedRefresh: !forceRefresh
-      });
+      }, { showBanner: false });
+
+      updateDefinitionsProgress(status);
+
+      if (!forceRefresh || !state.definitions.length) {
+        const response = await apiGet(`/api/projects/${encodeURIComponent(state.selectedProject)}/definitions?orgUrl=${encodeURIComponent(state.orgUrl)}`);
+        if (state.definitionsRequestId === requestId) {
+          state.definitions = response.definitions;
+          state.loadedDefinitionsProject = state.selectedProject;
+          state.definitionsMeta = response;
+        }
+      }
+
+      if (status.running) {
+        waitingForBackgroundRefresh = true;
+        void finishDefinitionsRefresh(requestId);
+        return;
+      }
+    } finally {
+      if (!waitingForBackgroundRefresh && state.definitionsRequestId === requestId) {
+        state.definitionsLoading = false;
+        renderDefinitionsToolbar();
+      }
+    }
+  }
+
+  async function finishDefinitionsRefresh(requestId) {
+    try {
       await pollDefinitionsStatus();
-      const url = `/api/projects/${encodeURIComponent(state.selectedProject)}/definitions?orgUrl=${encodeURIComponent(state.orgUrl)}`;
-      const response = await apiGet(url);
+      if (state.definitionsRequestId !== requestId) {
+        return;
+      }
+      const response = await apiGet(`/api/projects/${encodeURIComponent(state.selectedProject)}/definitions?orgUrl=${encodeURIComponent(state.orgUrl)}&refresh=1`);
+      if (state.definitionsRequestId !== requestId) {
+        return;
+      }
       state.definitions = response.definitions;
       state.loadedDefinitionsProject = state.selectedProject;
       state.definitionsMeta = response;
+      renderDefinitionsScreen();
+    } catch (error) {
+      if (state.definitionsRequestId === requestId) {
+        renderBanner(error?.message || String(error));
+      }
     } finally {
-      state.definitionsLoading = false;
+      if (state.definitionsRequestId === requestId) {
+        state.definitionsLoading = false;
+        renderDefinitionsToolbar();
+      }
     }
   }
 

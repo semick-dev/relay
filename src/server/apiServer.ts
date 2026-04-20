@@ -339,17 +339,13 @@ export class RelayApiServer {
       cacheUrl: adoUrl.toString(),
       ttlSeconds: TTL_SECONDS.builds,
       forceRefresh,
-      fetcher: async () => {
-        const response = await this.adoClient.listBuilds(orgUrl, project, sanitizeBuildBatchSize(batchSize), definitionId, continuationToken);
-        const builds = await Promise.all(response.builds.map(async (build) => ({
-          ...build,
-          commitMessage: await this.adoClient.getBuildChanges(orgUrl, project, build.id)
-        })));
-        return {
-          builds,
-          continuationToken: response.continuationToken
-        };
-      },
+      fetcher: async () => await this.adoClient.listBuilds(
+        orgUrl,
+        project,
+        sanitizeBuildBatchSize(batchSize),
+        definitionId,
+        continuationToken
+      ),
       mapper: (payload, cached, lastRefresh) => ({
         ok: true,
         projectName: project,

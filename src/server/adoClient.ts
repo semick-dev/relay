@@ -10,7 +10,6 @@ import {
   RelayProject,
   RelayTimelineNode
 } from "../shared/types";
-import { parseDocument, Scalar, YAMLMap, YAMLSeq } from "yaml";
 
 export class RelayAuthError extends Error {}
 export class RelayHttpError extends Error {
@@ -208,7 +207,7 @@ export class RelayAdoClient {
       };
     }
     if (options.parameters && Object.keys(options.parameters).length > 0) {
-      body.templateParameters = normalizeTemplateParameters(options.parameters);
+      body.templateParameters = await normalizeTemplateParameters(options.parameters);
     }
     if (options.variables && Object.keys(options.variables).length > 0) {
       body.variables = Object.fromEntries(
@@ -238,7 +237,7 @@ export class RelayAdoClient {
         }
       } : undefined
     });
-    return mapYamlDefinitionParameters(preview.finalYaml || "");
+    return await mapYamlDefinitionParameters(preview.finalYaml || "");
   }
 
   async getTimeline(orgUrl: string, project: string, buildId: number): Promise<RelayTimelineNode[]> {
@@ -744,13 +743,16 @@ function normalizeBranchRef(value: string): string {
   return `refs/heads/${value}`;
 }
 
-function normalizeTemplateParameters(parameters: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(parameters).map(([name, value]) => [name, normalizeTemplateParameterValue(name, value)])
+let yamlModulePromise: Promise<typeof import("yaml")> | undefined;
+
+async function normalizeTemplateParameters(parameters: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const entries = await Promise.all(
+    Object.entries(parameters).map(async ([name, value]) => [name, await normalizeTemplateParameterValue(name, value)] as const)
   );
+  return Object.fromEntries(entries);
 }
 
-function normalizeTemplateParameterValue(name: string, value: unknown): unknown {
+async function normalizeTemplateParameterValue(name: string, value: unknown): Promise<unknown> {
   if (typeof value !== "string") {
     return value;
   }
@@ -761,13 +763,15 @@ function normalizeTemplateParameterValue(name: string, value: unknown): unknown 
   }
 
   try {
+    const { parseDocument } = await loadYamlModule();
     return parseDocument(value).toJS();
   } catch (error) {
     throw new Error(`Invalid YAML for parameter "${name}": ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
-function mapYamlDefinitionParameters(yamlText: string): RelayDefinitionParameter[] {
+async function mapYamlDefinitionParameters(yamlText: string): Promise<RelayDefinitionParameter[]> {
+  const { parseDocument, Scalar, YAMLMap, YAMLSeq } = await loadYamlModule();
   const document = parseDocument(yamlText);
   const root = document.contents;
   if (!(root instanceof YAMLMap)) {
@@ -781,7 +785,7 @@ function mapYamlDefinitionParameters(yamlText: string): RelayDefinitionParameter
 
   if (parametersNode instanceof YAMLSeq) {
     return parametersNode.items
-      .map((item) => mapYamlParameterNode(item))
+      .map((item) => mapYamlParameterNode(item, Scalar, YAMLMap, YAMLSeq))
       .filter((item): item is RelayDefinitionParameter => Boolean(item))
       .sort((left, right) => left.name.localeCompare(right.name));
   }
@@ -789,7 +793,7 @@ function mapYamlDefinitionParameters(yamlText: string): RelayDefinitionParameter
   if (parametersNode instanceof YAMLMap) {
     const mapped: RelayDefinitionParameter[] = [];
     for (const pair of parametersNode.items) {
-        const name = scalarToString(pair.key);
+        const name = scalarToString(pair.key, Scalar);
         if (!name) {
           continue;
         }
@@ -797,7 +801,7 @@ function mapYamlDefinitionParameters(yamlText: string): RelayDefinitionParameter
           name,
           type: "string",
           label: name,
-          defaultValue: stringifyYamlValueNode(pair.value),
+          defaultValue: stringifyYamlValueNode(pair.value, Scalar),
           required: false,
           options: []
         });
@@ -808,22 +812,27 @@ function mapYamlDefinitionParameters(yamlText: string): RelayDefinitionParameter
   return [];
 }
 
-function mapYamlParameterNode(node: unknown): RelayDefinitionParameter | null {
+function mapYamlParameterNode(
+  node: unknown,
+  Scalar: typeof import("yaml").Scalar,
+  YAMLMap: typeof import("yaml").YAMLMap,
+  YAMLSeq: typeof import("yaml").YAMLSeq
+): RelayDefinitionParameter | null {
   if (!(node instanceof YAMLMap)) {
     return null;
   }
 
-  const name = scalarToString(node.get("name", true));
+  const name = scalarToString(node.get("name", true), Scalar);
   if (!name) {
     return null;
   }
 
-  const type = scalarToString(node.get("type", true)) || "string";
-  const displayName = scalarToString(node.get("displayName", true));
+  const type = scalarToString(node.get("type", true), Scalar) || "string";
+  const displayName = scalarToString(node.get("displayName", true), Scalar);
   const valuesNode = node.get("values", true);
   const options = valuesNode instanceof YAMLSeq
     ? valuesNode.items
-        .map((item) => scalarToString(item))
+        .map((item) => scalarToString(item, Scalar))
         .filter((value): value is string => Boolean(value))
         .map((value) => ({ label: value, value }))
     : [];
@@ -832,13 +841,13 @@ function mapYamlParameterNode(node: unknown): RelayDefinitionParameter | null {
     name,
     type,
     label: displayName || name,
-    defaultValue: stringifyYamlValueNode(node.get("default", true)),
+    defaultValue: stringifyYamlValueNode(node.get("default", true), Scalar),
     required: false,
     options
   };
 }
 
-function stringifyYamlValueNode(node: unknown): string | undefined {
+function stringifyYamlValueNode(node: unknown, Scalar: typeof import("yaml").Scalar): string | undefined {
   if (node === null || node === undefined) {
     return undefined;
   }
@@ -848,7 +857,7 @@ function stringifyYamlValueNode(node: unknown): string | undefined {
   return String(node).trimEnd();
 }
 
-function scalarToString(node: unknown): string | undefined {
+function scalarToString(node: unknown, Scalar: typeof import("yaml").Scalar): string | undefined {
   if (node instanceof Scalar) {
     return stringifyProcessInputValue(node.value);
   }
@@ -856,6 +865,11 @@ function scalarToString(node: unknown): string | undefined {
     return node;
   }
   return undefined;
+}
+
+async function loadYamlModule(): Promise<typeof import("yaml")> {
+  yamlModulePromise ??= import("yaml");
+  return await yamlModulePromise;
 }
 
 function stringifyProcessInputValue(value: unknown): string | undefined {

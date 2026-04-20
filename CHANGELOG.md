@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.0.14
+
+This update all about perceived performance fixes.
+
+- Parallel load of api server increases perceived startUp time.
+- Optimized module load order.
+- Remove blocking definition calls.
+
+
 ## 0.0.13
 
 - Fixed task log loading so large task outputs no longer auto-open inline in the task details pane

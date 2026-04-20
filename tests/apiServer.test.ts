@@ -174,19 +174,19 @@ describe("RelayApiServer task log loading", () => {
 });
 
 describe("RelayApiServer build list loading", () => {
-  it("forwards batch size and continuation token to the ADO build list call", async () => {
+  it("forwards batch size and continuation token to the ADO build list call without per-build change fanout", async () => {
     const adoClient = {
       listBuilds: vi.fn().mockResolvedValue({
         builds: [{
           id: 480,
           buildNumber: "20260419.2",
           definitionName: "demo",
+          commitMessage: "commit",
           status: "completed",
           result: "succeeded"
         }],
         continuationToken: "next-page"
-      }),
-      getBuildChanges: vi.fn().mockResolvedValue("commit")
+      })
     };
     const cacheStore = {
       isFresh: vi.fn().mockResolvedValue(false),
@@ -210,7 +210,6 @@ describe("RelayApiServer build list loading", () => {
     const response = await (server as any).loadBuilds("https://dev.azure.com/org", "proj", false, 12, 25, "cursor-1");
 
     expect(adoClient.listBuilds).toHaveBeenCalledWith("https://dev.azure.com/org", "proj", 25, 12, "cursor-1");
-    expect(adoClient.getBuildChanges).toHaveBeenCalledWith("https://dev.azure.com/org", "proj", 480);
     expect(response).toMatchObject({
       ok: true,
       projectName: "proj",
@@ -220,6 +219,45 @@ describe("RelayApiServer build list loading", () => {
         commitMessage: "commit"
       }]
     });
+  });
+});
+
+describe("RelayApiServer definitions precache", () => {
+  it("returns cached definition status immediately without launching a refresh job when limited refresh finds cache", async () => {
+    const adoClient = {
+      listDefinitions: vi.fn()
+    };
+    const cacheStore = {
+      readJson: vi.fn().mockResolvedValue({
+        body: [{
+          id: 1,
+          name: "demo",
+          path: "\\",
+          revision: 3
+        }],
+        cached: true,
+        lastRefresh: "2026-04-19T00:00:00.000Z"
+      })
+    };
+    const telemetry = {
+      span: vi.fn(),
+      log: vi.fn(),
+      ingest: vi.fn()
+    };
+    const server = new RelayApiServer(adoClient as any, cacheStore as any, {} as any, telemetry as any);
+
+    const response = await (server as any).startDefinitionsPrecache("https://dev.azure.com/org", "proj", true);
+
+    expect(response).toEqual({
+      ok: true,
+      projectName: "proj",
+      running: false,
+      loadedCount: 1,
+      totalCount: 1,
+      lastRefresh: "2026-04-19T00:00:00.000Z",
+      error: undefined
+    });
+    expect(adoClient.listDefinitions).not.toHaveBeenCalled();
   });
 });
 

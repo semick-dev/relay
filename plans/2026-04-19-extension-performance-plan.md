@@ -4,9 +4,9 @@ Goal: improve perceived and actual performance without regressing the recent UI 
 
 ## Priority Order
 
-- [ ] 6. Lazy-import `yaml` so queue-only parsing code does not inflate extension activation/module load cost.
-- [ ] 2. Kill the build-list N+1 enrichment path so definition build pages do not fan out into per-build change lookups on initial list fetch or paging append.
-- [ ] 1. Stop blocking project open on definitions precache so cached definitions can render immediately and background refresh can fill in newer data afterward.
+- [x] 6. Lazy-import `yaml` so queue-only parsing code does not inflate extension activation/module load cost.
+- [x] 2. Kill the build-list N+1 enrichment path so definition build pages do not fan out into per-build change lookups on initial list fetch or paging append.
+- [x] 1. Stop blocking project open on definitions precache so cached definitions can render immediately and background refresh can fill in newer data afterward.
 
 ## 6. Lazy-Import `yaml`
 
@@ -15,13 +15,13 @@ Current issue:
 - Most users do not need YAML parsing until they open `Queue This Build` and prepare queue metadata.
 
 Implementation:
-- [ ] Move `yaml` usage behind a dynamic import in the queue-metadata / template-parameter parsing path.
-- [ ] Keep the parsing helpers cohesive so the import happens once and is reused.
-- [ ] Ensure import failure surfaces as a normal queue-preparation error, not an activation failure.
+- [x] Move `yaml` usage behind a dynamic import in the queue-metadata / template-parameter parsing path.
+- [x] Keep the parsing helpers cohesive so the import happens once and is reused.
+- [x] Ensure import failure surfaces as a normal queue-preparation error, not an activation failure.
 
 Validation:
-- [ ] Extension still activates and renders sidebar/main panel without queue interaction.
-- [ ] Queue metadata still resolves YAML parameters correctly once queue flow is used.
+- [x] Extension still activates and renders sidebar/main panel without queue interaction.
+- [x] Queue metadata still resolves YAML parameters correctly once queue flow is used.
 
 ## 2. Kill Build-List N+1 Enrichment
 
@@ -30,17 +30,17 @@ Current issue:
 - This multiplies ADO calls by the number of builds in the page and gets worse with infinite scroll.
 
 Implementation:
-- [ ] Remove per-build change fetching from the primary build-list response path.
-- [ ] Keep build rows renderable from summary data alone.
+- [x] Remove per-build change fetching from the primary build-list response path.
+- [x] Keep build rows renderable from summary data alone.
 - [ ] Decide whether commit text should:
   - [ ] be omitted in the list when not already cached, or
   - [ ] be loaded lazily for visible rows only, or
   - [ ] be served only from previously cached build metadata.
-- [ ] Ensure infinite scroll append uses the same non-N+1 path.
+- [x] Ensure infinite scroll append uses the same non-N+1 path.
 
 Validation:
-- [ ] First-page build list load makes one build-list request, not one-plus-N change requests.
-- [ ] Infinite scroll append remains functional with the same pagination/continuation behavior.
+- [x] First-page build list load makes one build-list request, not one-plus-N change requests.
+- [x] Infinite scroll append remains functional with the same pagination/continuation behavior.
 - [ ] Build details page still loads the detailed build/task/timeline experience correctly when a row is opened.
 
 ## 1. Stop Blocking Project Open On Definitions Precache
@@ -49,15 +49,15 @@ Current issue:
 - Opening a project in definitions mode still waits on the precache kickoff/poll cycle before rendering the usable definition UI.
 
 Implementation:
-- [ ] Change definitions open flow to cached-first rendering.
-- [ ] Load and render cached definitions immediately when available.
-- [ ] Start definitions precache/refresh in the background instead of blocking the first render.
-- [ ] Patch refreshed definitions into the tree when the background refresh finishes.
-- [ ] Preserve the current progress/status affordances so refresh work is still visible.
+- [x] Change definitions open flow to cached-first rendering.
+- [x] Load and render cached definitions immediately when available.
+- [x] Start definitions precache/refresh in the background instead of blocking the first render.
+- [x] Patch refreshed definitions into the tree when the background refresh finishes.
+- [x] Preserve the current progress/status affordances so refresh work is still visible.
 
 Validation:
-- [ ] Opening a project with cached definitions renders the tree immediately.
-- [ ] Background precache still updates progress and final freshness metadata.
+- [x] Opening a project with cached definitions renders the tree immediately.
+- [x] Background precache still updates progress and final freshness metadata.
 - [ ] Opening a definition and loading its build list still works during or after background precache.
 
 ## Additional Performance Work
@@ -73,23 +73,23 @@ Validation:
 
 These should be added or strengthened before/during the work above so performance changes do not break recently-stabilized flows.
 
-- [ ] Add/expand API-server tests around definition build list fetches to assert the non-N+1 path.
-- [ ] Add tests for paged build-list continuation behavior so infinite scroll append remains correct.
-- [ ] Add tests for cached-first definitions loading and background refresh behavior.
-- [ ] Add tests for queue metadata / YAML parameter loading after lazy import.
-- [ ] Add regression coverage for the task-details/task-log loading flow so we do not reintroduce the download/show loop problem.
+- [x] Add/expand API-server tests around definition build list fetches to assert the non-N+1 path.
+- [x] Add tests for paged build-list continuation behavior so infinite scroll append remains correct.
+- [x] Add tests for cached-first definitions loading and background refresh behavior.
+- [x] Add tests for queue metadata / YAML parameter loading after lazy import.
+- [x] Add regression coverage for the task-details/task-log loading flow so we do not reintroduce the download/show loop problem.
 - [ ] Add regression coverage for artifact download state transitions so download disabled/loading/checkmark behavior stays intact.
 - [ ] Add regression coverage for build detail open behavior from the definition build list so summary/detail state handoff remains correct.
 - [ ] Add regression coverage for selection mode / bulk cancel interactions on the definition build list.
 
 ## Suggested Execution Sequence
 
-- [ ] Land tests that pin current task-log/task-detail/artifact/build-list behavior.
-- [ ] Implement 6. Lazy-import `yaml`.
-- [ ] Implement 2. Kill build-list N+1 enrichment.
-- [ ] Implement 1. Stop blocking project open on definitions precache.
+- [x] Land tests that pin current task-log/task-detail/artifact/build-list behavior.
+- [x] Implement 6. Lazy-import `yaml`.
+- [x] Implement 2. Kill build-list N+1 enrichment.
+- [x] Implement 1. Stop blocking project open on definitions precache.
 - [ ] Re-run build/test and do a manual pass on:
-  - [ ] sidebar startup
+  - [x] sidebar startup
   - [ ] definitions tree open
   - [ ] infinite scroll
   - [ ] build details
