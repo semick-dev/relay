@@ -74,9 +74,11 @@
     ]
   },
   "scripts": {
-    "build": "tsc -p .",
+    "typecheck": "tsc -p . --noEmit",
+    "build:bundle": "node scripts/build.mjs",
+    "build": "npm run typecheck && npm run build:bundle",
     "test": "vitest run",
-    "watch": "tsc -w -p .",
+    "watch": "node scripts/build.mjs --watch",
     "vscode:prepublish": "npm run build",
     "marketplace:package": "npx @vscode/vsce package",
     "marketplace:publish": "npx @vscode/vsce publish"
@@ -84,6 +86,7 @@
   "devDependencies": {
     "@types/node": "^22.15.17",
     "@types/vscode": "^1.100.0",
+    "esbuild": "^0.27.7",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"
   },

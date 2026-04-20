@@ -7,6 +7,9 @@ This update all about perceived performance fixes.
 - Parallel load of api server increases perceived startUp time.
 - Optimized module load order.
 - Remove blocking definition calls.
+- Bundle the extension host into a single shipped runtime file.
+- Bundle and minify the sidebar and main-panel webview scripts.
+- Move storage setup, token lookup, telemetry init, and API runtime startup fully behind immediate UI/command registration during activation.
 
 
 ## 0.0.13

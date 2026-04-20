@@ -2,6 +2,14 @@
 
 Goal: improve perceived and actual performance without regressing the recent UI fixes around build details, task details, artifacts, and definition build paging.
 
+## Startup Optimization Batch
+
+- [x] 1. Bundle the extension host code so activation pays one bundled module load instead of a larger CommonJS file graph.
+- [x] 2. Bundle the webview scripts so sidebar/main-panel startup uses built assets instead of raw source files.
+- [x] 3. Minify the shipped extension host and webview bundles as part of the build pipeline.
+- [x] 4. Delay more activation-time work by registering the UI first and initializing storage, telemetry, secrets, and the local API runtime in the background.
+- [x] 5. Audit and reduce synchronous startup work in `activate()` so the remaining path is mostly object creation, command registration, and a background runtime kickoff.
+
 ## Priority Order
 
 - [x] 6. Lazy-import `yaml` so queue-only parsing code does not inflate extension activation/module load cost.

@@ -130,7 +130,7 @@ export class RelaySidebarProvider implements vscode.WebviewViewProvider, vscode.
     };
     const baseCss = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "media", "base.css"));
     const initialTheme = bootstrap.themeUrls[bootstrap.savedState.activeTheme];
-    const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "media", "main.js"));
+    const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "media", "dist", "main.js"));
     const csp = [
       "default-src 'none'",
       `img-src ${webview.cspSource} https: data:`,

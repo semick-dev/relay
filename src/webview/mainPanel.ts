@@ -142,7 +142,7 @@ export class RelayMainPanel {
     };
     const baseCss = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "media", "base.css"));
     const initialTheme = bootstrap.themeUrls[state.activeTheme];
-    const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "media", "panel.js"));
+    const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "media", "dist", "panel.js"));
     const csp = [
       "default-src 'none'",
       `img-src ${webview.cspSource} https: data:`,

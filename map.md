@@ -8,20 +8,29 @@ Read files in this order:
 
 1. [AGENTS.md](/home/semick/repo/relay/AGENTS.md)
 2. [package.json](/home/semick/repo/relay/package.json)
-3. [src/extension.ts](/home/semick/repo/relay/src/extension.ts)
-4. [src/shared/types.ts](/home/semick/repo/relay/src/shared/types.ts)
-5. [src/server/apiServer.ts](/home/semick/repo/relay/src/server/apiServer.ts)
-6. [src/server/adoClient.ts](/home/semick/repo/relay/src/server/adoClient.ts)
-7. [src/webview/provider.ts](/home/semick/repo/relay/src/webview/provider.ts)
-8. [src/webview/mainPanel.ts](/home/semick/repo/relay/src/webview/mainPanel.ts)
-9. [media/main.js](/home/semick/repo/relay/media/main.js)
-10. [media/panel.js](/home/semick/repo/relay/media/panel.js)
-11. [media/base.css](/home/semick/repo/relay/media/base.css)
-12. [plans/2026-04-12-ado-definition-12-queue-notes.md](/home/semick/repo/relay/plans/2026-04-12-ado-definition-12-queue-notes.md)
-13. [plans/build_layout.md](/home/semick/repo/relay/plans/build_layout.md)
-14. [plans/artifacts_layout.md](/home/semick/repo/relay/plans/artifacts_layout.md)
+3. [scripts/build.mjs](/home/semick/repo/relay/scripts/build.mjs)
+4. [src/extension.ts](/home/semick/repo/relay/src/extension.ts)
+5. [src/shared/types.ts](/home/semick/repo/relay/src/shared/types.ts)
+6. [src/server/apiServer.ts](/home/semick/repo/relay/src/server/apiServer.ts)
+7. [src/server/adoClient.ts](/home/semick/repo/relay/src/server/adoClient.ts)
+8. [src/webview/provider.ts](/home/semick/repo/relay/src/webview/provider.ts)
+9. [src/webview/mainPanel.ts](/home/semick/repo/relay/src/webview/mainPanel.ts)
+10. [media/main.js](/home/semick/repo/relay/media/main.js)
+11. [media/panel.js](/home/semick/repo/relay/media/panel.js)
+12. [media/base.css](/home/semick/repo/relay/media/base.css)
+13. [plans/2026-04-12-ado-definition-12-queue-notes.md](/home/semick/repo/relay/plans/2026-04-12-ado-definition-12-queue-notes.md)
+14. [plans/build_layout.md](/home/semick/repo/relay/plans/build_layout.md)
+15. [plans/artifacts_layout.md](/home/semick/repo/relay/plans/artifacts_layout.md)
 
 If you only have 5 minutes, read `src/extension.ts`, `src/server/apiServer.ts`, `src/server/adoClient.ts`, `media/panel.js`, and `media/base.css`.
+
+Build/runtime note:
+
+- shipped runtime assets are now bundled with `esbuild` via [scripts/build.mjs](/home/semick/repo/relay/scripts/build.mjs)
+- `npm run build` now does `tsc --noEmit` followed by bundled/minified output generation for:
+  - `out/extension.js`
+  - `media/dist/main.js`
+  - `media/dist/panel.js`
 
 ## What This Repo Is
 
@@ -48,26 +57,27 @@ High-level shape:
 
 On activation:
 
-- ensures `globalStorageUri` exists
-- creates `RelayTelemetrySink`
-- creates `RelayStorage`
-- creates `RelayCacheStore`
-- loads ADO token from VS Code secrets
-- creates `RelayAdoClient`
-- creates `RelayApiServer`
 - creates `RelayMainPanel`
 - registers `RelaySidebarProvider`
 - registers commands:
   - `relay.refresh`
   - `relay.setToken`
   - `relay.clearToken`
-- starts the local API server in the background and posts the resolved `apiBase` into any open webviews once the port is ready
+- kicks off background runtime initialization for:
+  - `globalStorageUri` creation
+  - telemetry
+  - storage/cache
+  - ADO token lookup
+  - `RelayAdoClient`
+  - `RelayApiServer`
+- posts the resolved `apiBase` into any open webviews once the port is ready
 
 Important current behavior:
 
 - token storage is secret-backed, not environment-only
 - the sidebar can request token setup interactively
 - extension activation no longer blocks UI render on `RelayApiServer.start()`
+- extension activation also no longer blocks on storage setup, token lookup, or telemetry logging; those now happen after the UI and commands are registered
 
 ### UI split
 
@@ -75,11 +85,13 @@ Sidebar:
 
 - [src/webview/provider.ts](/home/semick/repo/relay/src/webview/provider.ts)
 - [media/main.js](/home/semick/repo/relay/media/main.js)
+- built entry shipped to the webview: [media/dist/main.js](/home/semick/repo/relay/media/dist/main.js)
 
 Main panel:
 
 - [src/webview/mainPanel.ts](/home/semick/repo/relay/src/webview/mainPanel.ts)
 - [media/panel.js](/home/semick/repo/relay/media/panel.js)
+- built entry shipped to the webview: [media/dist/panel.js](/home/semick/repo/relay/media/dist/panel.js)
 
 Neither webview talks to Azure DevOps directly. Everything goes through the local API server.
 

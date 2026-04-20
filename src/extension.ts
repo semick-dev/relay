@@ -11,31 +11,17 @@ import { RelaySidebarProvider } from "./webview/provider";
 
 let relayServer: RelayApiServer | undefined;
 const SECRET_KEY = "relay.adoToken";
+let relayClient: RelayAdoClient | undefined;
+let relayShuttingDown = false;
+let latestToken: string | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  await fs.mkdir(context.globalStorageUri.fsPath, { recursive: true });
-
-  const telemetry = new RelayTelemetrySink();
-  await telemetry.log("relay.activate", "info", {
-    extensionMode: context.extensionMode
-  });
-
-  const storage = new RelayStorage(context.globalStorageUri.fsPath);
-  const cacheStore = new RelayCacheStore(storage);
-
-  const token = await context.secrets.get(SECRET_KEY);
-
-  const adoClient = new RelayAdoClient(token);
-  relayServer = new RelayApiServer(adoClient, cacheStore, storage, telemetry);
-
   const mainPanel = new RelayMainPanel(context);
   const provider = new RelaySidebarProvider(
     context,
     (project, view) => mainPanel.open(project, view),
     (themeId) => mainPanel.postTheme(themeId)
   );
-
-  void startRelayServer(relayServer, mainPanel, provider, telemetry);
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider("relay.sidebar", provider),
@@ -55,22 +41,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       if (value) {
         await context.secrets.store(SECRET_KEY, value);
-        adoClient.setToken(value);
+        latestToken = value;
+        relayClient?.setToken(value);
       } else {
         await context.secrets.delete(SECRET_KEY);
-        adoClient.setToken(undefined);
+        latestToken = undefined;
+        relayClient?.setToken(undefined);
       }
       provider.notifyAuthChanged();
     }),
     vscode.commands.registerCommand("relay.clearToken", async () => {
       await context.secrets.delete(SECRET_KEY);
-      adoClient.setToken(undefined);
+      latestToken = undefined;
+      relayClient?.setToken(undefined);
       provider.notifyAuthChanged();
     }),
     context.secrets.onDidChange((e) => {
       if (e.key === SECRET_KEY) {
         void context.secrets.get(SECRET_KEY).then((updated) => {
-          adoClient.setToken(updated || undefined);
+          latestToken = updated || undefined;
+          relayClient?.setToken(updated || undefined);
           provider.notifyAuthChanged();
         });
       }
@@ -78,6 +68,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     provider,
     {
       dispose: () => {
+        relayShuttingDown = true;
         if (relayServer) {
           void relayServer.stop();
           relayServer = undefined;
@@ -85,16 +76,43 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
     }
   );
+
+  void initializeRelayRuntime(context, mainPanel, provider);
 }
 
-async function startRelayServer(
-  server: RelayApiServer,
+async function initializeRelayRuntime(
+  context: vscode.ExtensionContext,
   mainPanel: RelayMainPanel,
-  provider: RelaySidebarProvider,
-  telemetry: RelayTelemetrySink
+  provider: RelaySidebarProvider
 ): Promise<void> {
+  const telemetry = new RelayTelemetrySink();
   try {
+    void telemetry.log("relay.activate", "info", {
+      extensionMode: context.extensionMode
+    });
+
+    await fs.mkdir(context.globalStorageUri.fsPath, { recursive: true });
+    if (relayShuttingDown) {
+      return;
+    }
+
+    const storage = new RelayStorage(context.globalStorageUri.fsPath);
+    const cacheStore = new RelayCacheStore(storage);
+    const secretToken = await context.secrets.get(SECRET_KEY);
+    const token = latestToken ?? secretToken ?? undefined;
+    const adoClient = new RelayAdoClient(token);
+    relayClient = adoClient;
+
+    const server = new RelayApiServer(adoClient, cacheStore, storage, telemetry);
+    relayServer = server;
+
     const port = await server.start();
+    if (relayShuttingDown) {
+      await server.stop();
+      relayServer = undefined;
+      return;
+    }
+
     const apiBase = `http://127.0.0.1:${port}`;
     provider.postServerReady(apiBase);
     mainPanel.postServerReady(apiBase);
@@ -108,6 +126,8 @@ async function startRelayServer(
 }
 
 export function deactivate(): Thenable<void> | undefined {
+  relayShuttingDown = true;
+  relayClient = undefined;
   if (!relayServer) {
     return undefined;
   }
