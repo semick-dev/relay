@@ -10,6 +10,7 @@ This update all about perceived performance fixes.
 - Bundle the extension host into a single shipped runtime file.
 - Bundle and minify the sidebar and main-panel webview scripts.
 - Move storage setup, token lookup, telemetry init, and API runtime startup fully behind immediate UI/command registration during activation.
+- Trim VSIX packaging so only bundled runtime assets ship, removing redundant raw webview sources and legacy compiled subtrees.
 
 
 ## 0.0.13

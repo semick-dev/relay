@@ -14,8 +14,13 @@
     "url": "https://github.com/semick-dev/relay/issues"
   },
   "files": [
-    "out/**",
-    "media/**",
+    "out/extension.js",
+    "media/base.css",
+    "media/dist/**",
+    "media/theme-*.css",
+    "media/icon.png",
+    "media/activity.svg",
+    "media/relay_example.jpg",
     "node_modules/yaml/**",
     "README.md",
     "CHANGELOG.md",

@@ -31,6 +31,13 @@ Build/runtime note:
   - `out/extension.js`
   - `media/dist/main.js`
   - `media/dist/panel.js`
+- VSIX packaging is intentionally narrowed in [package.json](/home/semick/repo/relay/package.json) to ship only:
+  - `out/extension.js`
+  - `media/base.css`
+  - `media/dist/**`
+  - theme CSS files
+  - extension icons / README image
+  - `node_modules/yaml/**` for the lazy queue parser
 
 ## What This Repo Is
 
